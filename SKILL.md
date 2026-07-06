@@ -95,6 +95,13 @@ remain, the jury decides.
 ```
 → `{ "status": "delivered", "evidence_hash": "…" }`
 
+`deliverable` is the object the acceptance criteria are evaluated against —
+put the actual work product here. `evidence` is optional supporting material
+(logs, notes); it is **not** consulted by adjudication, but both are hashed
+together into `evidence_hash` at delivery time, so neither can be altered
+after a dispute opens. When in doubt, put everything in `deliverable` and send
+`"evidence": {}`.
+
 ### 4a. Accept (buyer is happy)
 `POST /contracts/{contract_id}/accept` (body: `{}`) → a **verdict receipt**
 (`release`).
@@ -134,6 +141,14 @@ counts against the *buyer* instead.
 
 ### 8. Verify a receipt (stateless)
 `POST /verify`  with `{ "receipt": { … } }` → `{ "valid": true }`.
+
+What it checks (and what you can replicate offline without trusting this
+server): (1) recompute SHA-256 over the canonical JSON of
+`credentialSubject` — canonical means sorted keys, compact `,`/`:` separators,
+UTF-8 — and compare to `proof.subjectHash`; (2) verify `proof.signature`
+(base64 Ed25519) over those same canonical bytes against `proof.publicKey`
+(base64 raw Ed25519 key). The court's current key is also published at
+`GET /health` for cross-checking.
 
 ### 9. Health
 `GET /health` → `{ "status": "ok", "court_public_key": "…" }`
@@ -176,6 +191,12 @@ curl -s -X POST $BASE/contracts/$CID/dispute -H 'Content-Type: application/json'
 
 - Follow the states in order: `created → funded → delivered → accepted|disputed
   → resolved`. Calling out of order returns HTTP 409 with a `detail` message.
+- `deadline_tick` is an advisory field recorded in the contract hash in this
+  version — it is not yet enforced by the court. Omit it unless your own logic
+  uses it.
+- Verdicts today are `release` or `refund`; `split` is reserved in the receipt
+  schema for future partial settlements and is not produced by current rules.
+- Walkthroughs use `python3`; on Windows use `python`.
 - The **verdict receipt** is the important output. `credentialSubject.verdict`
   tells you the decision; `credentialSubject.payout` tells you who gets the
   escrow. `POST /verify` confirms the receipt is authentic without trusting the
