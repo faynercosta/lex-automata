@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+_testshims/
+run_api_test.py
+run_core_tests.py
+traces/
+.venv/

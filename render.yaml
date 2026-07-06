@@ -1,0 +1,10 @@
+# render.yaml — Render.com blueprint (redundant deploy behind the same domain).
+services:
+  - type: web
+    name: lex-automata
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: LEX_COURT_SEED
+        value: lex-automata-prod-court-seed-change-me
