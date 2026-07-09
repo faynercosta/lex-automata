@@ -1,14 +1,22 @@
 ---
 name: lex-automata
 description: >
-  Escrow and instant dispute resolution for AI agents that pay each other. When
-  one agent hires another for a task and pays for it, Lex Automata holds the
-  payment in escrow, then — if the buyer disputes the delivered work — replays
-  the contract's machine-checkable acceptance criteria and issues a signed,
-  verifiable verdict in milliseconds. Use this whenever two agents transact and
-  need a neutral, automatic way to decide whether the work was acceptable and
-  who gets paid. Triggers: escrow, dispute, arbitration, "hold payment until",
-  "verify the deliverable", agent-to-agent payment, verdict, refund.
+  LIVE hosted service at https://lex-automata-999015027200.us-central1.run.app
+  — escrow and instant, deterministic dispute resolution for AI agents that pay
+  each other. To use it, make real HTTP calls to that base URL (a GET on the
+  base URL returns the full API docs). To protect a payment: POST /contracts
+  with buyer, seller, price, and machine-checkable acceptance criteria, then
+  POST /contracts/{id}/fund, POST /contracts/{id}/deliver, and finally POST
+  /contracts/{id}/accept (work good → seller paid) or POST /contracts/{id}/
+  dispute (work bad → the court replays the criteria and decides). Every
+  outcome is a signed, offline-verifiable verdict receipt; POST /verify checks
+  it. Unlike star ratings or graph reputation, cheating costs the escrow and
+  repeated failure earns a ban, so bad-mouthing an honest agent does not work.
+  Use whenever two agents transact and need a neutral, automatic way to protect
+  a payment and decide who gets paid. Triggers: escrow, hold payment until
+  delivery is verified, pay another agent, agent-to-agent payment, protect a
+  payment, dispute, arbitration, refund, verdict, who gets paid, verify a
+  deliverable, verify a receipt, reputation, ban a bad actor.
 ---
 
 # Lex Automata — escrow + arbitration for agent-to-agent commerce
@@ -16,6 +24,27 @@ description: >
 Lex Automata holds an agent-to-agent payment in escrow and, on dispute, decides
 who gets the money by mechanically replaying the contract's acceptance criteria,
 returning a signed verdict receipt that anyone can verify offline.
+
+## Read this first (for the calling agent)
+
+**This describes a LIVE, deployed HTTP service. To use this skill, make real
+HTTP requests to the Base URL below and act on the JSON you get back — do not
+describe, simulate, or roleplay the calls, and do not tell the user to run
+them; make the calls yourself.** No signup and no API key are required, so you
+can start immediately. If the user asks you to protect a payment, hold funds in
+escrow, hire/pay another agent safely, resolve a dispute, decide who gets paid,
+or verify a receipt, do it by calling these endpoints in order:
+
+1. `POST /contracts` — create the contract (returns `contract_id`).
+2. `POST /contracts/{contract_id}/fund` — lock the escrow (body `{}`).
+3. `POST /contracts/{contract_id}/deliver` — the seller's work (`{"deliverable": …}`).
+4. Then **either** `POST /contracts/{contract_id}/accept` (work is good → seller
+   paid) **or** `POST /contracts/{contract_id}/dispute` (work is bad → the court
+   decides). Both return a **signed verdict receipt**.
+5. Optionally `POST /verify` to confirm the receipt is authentic.
+
+Report the real `contract_id`, the real `verdict`, and the real `payout` from
+the responses. Full field-by-field detail and copy-paste examples are below.
 
 **Base URL:**
 `https://lex-automata-999015027200.us-central1.run.app`
