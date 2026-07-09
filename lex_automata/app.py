@@ -163,6 +163,63 @@ def root() -> str:
     )
 
 
+SKILL_RAW_URL = "https://raw.githubusercontent.com/faynercosta/lex-automata/main/SKILL.md"
+
+
+@app.get("/agentfacts")
+@app.get("/.well-known/agent-facts")
+def agentfacts() -> dict[str, Any]:
+    """Machine-readable capability metadata (NANDA AgentFacts style).
+
+    Lets a discovering agent learn what this service does, how to call it, and
+    how its outputs are certified — without parsing prose. The SKILL.md remains
+    the canonical how-to; this is the structured summary for registries and
+    routers.
+
+    Example::
+
+        GET /agentfacts -> {"agent_name": "lex-automata", "capabilities": ...}
+    """
+    base = "https://lex-automata-999015027200.us-central1.run.app"
+    return {
+        "@context": "https://projectnanda.org/agentfacts/v1",
+        "id": "did:web:lex-automata-999015027200.us-central1.run.app",
+        "agent_name": "lex-automata",
+        "label": "Lex Automata — escrow + arbitration court for agent-to-agent commerce",
+        "description": (
+            "Holds an agent-to-agent payment in escrow against machine-checkable "
+            "acceptance criteria; on dispute, deterministically replays the "
+            "criteria (LLM jury for semantic criteria only) and issues a signed, "
+            "offline-verifiable verdict receipt deciding who gets paid. "
+            "Receipt-derived reputation; repeat losers are banned from new "
+            "contracts. No signup, no API key."
+        ),
+        "version": app.version,
+        "documentation": [f"{base}/skill.md", SKILL_RAW_URL],
+        "provider": {"name": "Fayner Costa", "github": "faynercosta"},
+        "endpoints": {"static": [base]},
+        "capabilities": {
+            "protocols": ["https+json"],
+            "authentication": "none",
+            "functions": [
+                "escrow",
+                "contract-of-record",
+                "deterministic-arbitration",
+                "semantic-arbitration-llm-jury",
+                "signed-verdict-receipts",
+                "offline-receipt-verification",
+                "receipt-derived-reputation",
+                "ban-enforcement",
+            ],
+        },
+        "certification": {
+            "receipt_signature_suite": "Ed25519Signature2020",
+            "court_public_key": _court._key.public_b64,
+            "verify_endpoint": f"{base}/verify",
+        },
+    }
+
+
 @app.get("/health")
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:

@@ -61,6 +61,17 @@ def test_root_serves_skill_spec() -> None:
     assert "/contracts" in r.text
 
 
+def test_agentfacts_capability_metadata() -> None:
+    """Machine-readable discovery metadata at /agentfacts (and well-known alias)."""
+    for path in ("/agentfacts", "/.well-known/agent-facts"):
+        r = client.get(path)
+        assert r.status_code == 200
+        facts = r.json()
+        assert facts["agent_name"] == "lex-automata"
+        assert "escrow" in facts["capabilities"]["functions"]
+        assert facts["certification"]["court_public_key"]
+
+
 def test_skill_md_alias() -> None:
     """/skill.md serves the same document as / (the hackathon-suggested path)."""
     r = client.get("/skill.md")

@@ -346,7 +346,24 @@ curl -s https://lex-automata-999015027200.us-central1.run.app/health
  "tier1_juror": "openai", "tier1_juror_model": "gpt-4o-mini"}
 ```
 
-### 10. Court activity log — `GET /activity?limit=50`
+### 10. Capability metadata — `GET /agentfacts`
+
+Machine-readable AgentFacts-style summary of what this service does (functions,
+endpoints, receipt certification, links to this document) for registries and
+discovering agents. Also served at `/.well-known/agent-facts`.
+
+```bash
+curl -s https://lex-automata-999015027200.us-central1.run.app/agentfacts
+```
+
+```json
+{"agent_name": "lex-automata",
+ "capabilities": {"functions": ["escrow", "deterministic-arbitration",
+                                "signed-verdict-receipts", …]},
+ "certification": {"receipt_signature_suite": "Ed25519Signature2020", …}, …}
+```
+
+### 11. Court activity log — `GET /activity?limit=50`
 
 The court's own recent events (contract creations, funding, deliveries, and
 rendered verdicts with tier + payout), most-recent first. Read-only; useful for
