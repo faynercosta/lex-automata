@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <title>Court of NANDA — Lex Automata live arena</title>
 <style>
   :root{
@@ -109,18 +111,19 @@
       <button class="scn" data-s="frivolous">🙅 Frivolous buyer</button>
       <button class="scn" data-s="semantic">🧠 Semantic jury</button>
       <button class="scn" data-s="ban">⛔ The ban</button>
-      <label class="speed">🐢<input id="speed" type="range" min="0.4" max="2.2" step="0.1" value="1">🐇</label>
+      <label class="speed">🐢<input id="speed" type="range" min="0.4" max="2.2" step="0.1" value="1.4">🐇</label>
     </div>
   </aside>
 </div>
 
 <script>
+const BUILD = "2026-07-09c";
 const BASE = "https://lex-automata-999015027200.us-central1.run.app";
 const SVGNS = "http://www.w3.org/2000/svg";
 const stage = document.getElementById("stage");
 const docket = document.getElementById("docket");
 const banner = document.getElementById("banner");
-let SPEED = 1;
+let SPEED = 1.4;
 document.getElementById("speed").addEventListener("input", e=> SPEED = +e.target.value);
 
 const sleep = ms => new Promise(r=> setTimeout(r, ms / SPEED));
@@ -298,14 +301,38 @@ function log(icon, html, cls=""){
 }
 
 // ---- live court client ----------------------------------------------------
-async function api(method, path, body){
-  const opt={method, headers:{"Content-Type":"application/json"}};
-  if(method==="POST") opt.body=JSON.stringify(body||{});
-  const res=await fetch(BASE+path, opt);
-  let data=null; try{ data=await res.json(); }catch{ data=await res.text(); }
-  return {status:res.status, data};
+async function api(method, path, body, {timeoutMs=12000, retries=1}={}){
+  // A live demo must never freeze on a stalled request: abort after timeoutMs,
+  // retry once, then return a status:0 result the callers surface as an error.
+  for(let attempt=0; attempt<=retries; attempt++){
+    const ctrl=new AbortController();
+    const to=setTimeout(()=>ctrl.abort(), timeoutMs);
+    try{
+      const opt={method, headers:{"Content-Type":"application/json"}, signal:ctrl.signal};
+      if(method==="POST") opt.body=JSON.stringify(body||{});
+      const res=await fetch(BASE+path, opt);
+      clearTimeout(to);
+      let data=null; try{ data=await res.json(); }catch{ data=await res.text(); }
+      return {status:res.status, data};
+    }catch(e){
+      clearTimeout(to);
+      if(attempt===retries) return {status:0, data:{detail:`network ${e.name||"error"}: ${e.message||e}`}};
+      await sleep(700);
+    }
+  }
 }
 const did = role => `did:nanda:${role}-${Math.random().toString(36).slice(2,8)}`;
+
+// Throw a readable error (surfaced in the docket) when the court doesn't return
+// what a step needs, instead of letting an undefined field crash later.
+function mustGet(res, path, what){
+  let v = res && res.data;
+  for(const k of path.split(".")) v = v == null ? undefined : v[k];
+  if(v === undefined || v === null){
+    throw new Error(`${what} — court returned HTTP ${res && res.status}: ${JSON.stringify(res && res.data)}`);
+  }
+  return v;
+}
 
 // ---- scenarios ------------------------------------------------------------
 let busy=false;
@@ -323,7 +350,7 @@ async function runDeal({buyerName, buyerKind, sellerName, sellerKind, price, nee
   // 1. contract
   await buyer.say(buyerLine, "neutral");
   const c=await api("POST","/contracts",{buyer:buyer.did, seller:seller.did, price, acceptance});
-  const cid=c.data.contract_id;
+  const cid=mustGet(c,"contract_id","contract creation failed");
   log("📜", `<b>${buyerName}</b> opens contract <span class="mono">${cid.slice(0,12)}</span> — needs ${need}, offers ${price} credits`, "");
   // 2. fund escrow — coins fly to vault
   await buyer.moveTo(330,360);
@@ -355,7 +382,7 @@ async function runDeal({buyerName, buyerKind, sellerName, sellerKind, price, nee
     r=await api("POST",`/contracts/${cid}/dispute`,{reason:"dispute"});
     await buyer.home_();
   }
-  const cs=r.data.credentialSubject;
+  const cs=mustGet(r,"credentialSubject","no verdict returned");
   const winnerDid=Object.keys(cs.payout)[0];
   const amount=Object.values(cs.payout)[0];
   const winner = winnerDid===buyer.did ? buyer : seller;
@@ -371,7 +398,7 @@ async function runDeal({buyerName, buyerKind, sellerName, sellerKind, price, nee
   // 6. signed receipt → ledger, verified
   const v=await api("POST","/verify",{receipt:r.data});
   await fly("🧾", window._judge, window._ledger, {n:1});
-  log("🧾", `signed receipt <span class="mono">${r.data.id.split(':').pop().slice(0,10)}</span> filed — verifies offline: <b>${v.data.valid}</b>`, "");
+  log("🧾", `signed receipt <span class="mono">${(r.data.id||"receipt:—").split(':').pop().slice(0,10)}</span> filed — verifies offline: <b>${v.data&&v.data.valid}</b>`, "");
   // 7. reputation update (seller)
   const rep=await api("GET",`/agents/${seller.did}/reputation`);
   const s=rep.data.as_seller;
@@ -426,10 +453,12 @@ const SCEN = {
       await buyer.moveTo(400,400); await buyer.say("I dispute!","angry");
       await gavelBang();
       const r=await api("POST",`/contracts/${cid}/dispute`,{reason:"nothing delivered"});
+      const verdict=mustGet(r,"credentialSubject.verdict","no verdict returned");
       await fly("🪙",window._vault,{x:buyer.home.x,y:buyer.home.y},{n:1});
-      const rep=await api("GET",`/agents/${seller.did}/reputation`); const s=rep.data.as_seller;
+      const rep=await api("GET",`/agents/${seller.did}/reputation`);
+      const s=mustGet(rep,"as_seller","reputation lookup failed");
       seller.setReputation(rep.data.standing, s.score);
-      log(rep.data.standing==="BANNED"?"⛔":"🔴", `loss #${i}: refund → <b>${rep.data.standing}</b> (score ${s.score.toFixed(2)}, ${s.negative} losses)`, rep.data.standing==="BANNED"?"banned":"verdict refund");
+      log(rep.data.standing==="BANNED"?"⛔":"🔴", `loss #${i}: ${verdict} → <b>${rep.data.standing}</b> (score ${s.score.toFixed(2)}, ${s.negative} losses)`, rep.data.standing==="BANNED"?"banned":"verdict refund");
       buyer.remove(); await sleep(500);
     }
     // attempt a 4th contract → refused
@@ -463,8 +492,8 @@ buildScenery();
     if(h.data.status==="ok"){
       liveEl.classList.remove("off");
       txt.textContent="LIVE · court key "+(h.data.court_public_key||"").slice(0,10)+"…";
-      document.getElementById("docketSub").textContent="connected";
-      log("🏛️","Connected to the live Court of NANDA. Press a scenario to begin.","scene");
+      document.getElementById("docketSub").textContent="connected · build "+BUILD;
+      log("🏛️",`Connected to the live Court of NANDA <span class="mono">(build ${BUILD})</span>. Press a scenario to begin.`,"scene");
     }
   }catch(e){
     txt.textContent="offline — cannot reach court";
