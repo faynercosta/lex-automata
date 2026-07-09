@@ -34,7 +34,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from lex_automata.core import Court, CourtError, SigningKey, verify_receipt
+from lex_automata.core import (
+    Court,
+    CourtError,
+    SigningKey,
+    deterministic_mock_juror,
+    verify_receipt,
+)
+from lex_automata.llm_juror import select_juror
 
 app = FastAPI(
     title="Lex Automata",
@@ -56,7 +63,12 @@ app.add_middleware(
 # court's public key — and therefore its receipts' verifiability — stable
 # across restarts and across the two redundant deployments.
 _SEED = os.environ.get("LEX_COURT_SEED", "lex-automata-demo-court-seed").encode()
-_court = Court(signing_key=SigningKey.generate(seed=_SEED))
+# Tier-0 stays deterministic; the Tier-1 (semantic) jury uses a real LLM when
+# LEX_JUROR=openai + OPENAI_API_KEY are set, else the deterministic mock.
+_court = Court(
+    signing_key=SigningKey.generate(seed=_SEED),
+    juror=select_juror(deterministic_mock_juror),
+)
 
 
 # ------------------------- server-side activity log ------------------------
@@ -145,8 +157,9 @@ _SKILL_PATH = Path(__file__).resolve().parent.parent / "SKILL.md"
 
 
 @app.get("/", response_class=PlainTextResponse)
+@app.get("/skill.md", response_class=PlainTextResponse)
 def root() -> str:
-    """Serve the agent-facing SKILL.md at the service root.
+    """Serve the agent-facing SKILL.md at the service root (and at /skill.md).
 
     Example::
 
@@ -175,7 +188,43 @@ def healthz() -> dict[str, Any]:
 
         GET /health -> {"status": "ok", "court_public_key": "..."}
     """
-    return {"status": "ok", "court_public_key": _court._key.public_b64}
+    juror = "openai" if (
+        os.environ.get("LEX_JUROR", "").lower() == "openai" and os.environ.get("OPENAI_API_KEY")
+    ) else "deterministic-mock"
+    return {
+        "status": "ok",
+        "court_public_key": _court._key.public_b64,
+        "tier1_juror": juror,
+        "tier1_juror_model": os.environ.get("LEX_JUROR_MODEL", "gpt-4o-mini") if juror == "openai" else None,
+    }
+
+
+@app.get("/contracts")
+def contracts_index() -> dict[str, Any]:
+    """Describe the collection endpoint (creation itself is via POST).
+
+    Exists so that a bare ``GET /contracts`` (a curious agent, a link checker,
+    the skills-registry reachability probe) gets a useful 200 instead of a 405.
+
+    Example::
+
+        GET /contracts -> {"contracts_created": 12, "how_to_create": {...}}
+    """
+    return {
+        "service": "lex-automata",
+        "contracts_created": len(_court._contracts),
+        "how_to_create": {
+            "method": "POST",
+            "path": "/contracts",
+            "example_body": {
+                "buyer": "did:nanda:buyer",
+                "seller": "did:nanda:seller",
+                "price": 50,
+                "acceptance": {"assertions": [{"path": "rows", "op": "gte", "value": 3}]},
+            },
+        },
+        "docs": "GET / returns the full SKILL.md",
+    }
 
 
 @app.post("/contracts")
@@ -318,6 +367,29 @@ def agent_reputation(did: str) -> dict[str, Any]:
         -> {"standing": "GOOD", "as_seller": {"score": 0.8, ...}, "as_buyer": {...}}
     """
     return _court.reputation_of(did)
+
+
+@app.get("/verify")
+def verify_index() -> dict[str, Any]:
+    """Describe the verifier endpoint (verification itself is via POST).
+
+    Exists so that a bare ``GET /verify`` (a curious agent, a link checker,
+    the skills-registry reachability probe) gets a useful 200 instead of a 405.
+
+    Example::
+
+        GET /verify -> {"how_to_verify": {...}}
+    """
+    return {
+        "service": "lex-automata",
+        "how_to_verify": {
+            "method": "POST",
+            "path": "/verify",
+            "example_body": {"receipt": {"credentialSubject": "...", "proof": "..."}},
+            "returns": {"valid": True},
+        },
+        "docs": "GET / returns the full SKILL.md",
+    }
 
 
 @app.post("/verify")

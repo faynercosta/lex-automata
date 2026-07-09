@@ -67,8 +67,11 @@ Put this object in the `acceptance` field when creating a contract:
     `regex`.
   - `value`: the comparison value (omit for `nonempty`).
   - `semantic: true` (optional): marks a criterion that can't be checked
-    mechanically (e.g. "the summary is faithful"). These are decided by the LLM
-    jury instead of the deterministic engine.
+    mechanically (e.g. "the summary is faithful"). These are decided by the
+    **Tier-1 jury — a real, low-temperature LLM** (gpt-4o-mini) — instead of the
+    deterministic engine. Add a `description` field with a plain-English
+    statement of the criterion so the juror knows what to check, e.g.
+    `{ "path": "summary", "semantic": true, "description": "a faithful, on-topic summary of the source" }`.
 
 If every deterministic check passes, the verdict is `release` (seller is paid).
 If any fails, it's `refund` (buyer is refunded). If only semantic criteria

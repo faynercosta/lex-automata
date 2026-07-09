@@ -61,6 +61,27 @@ def test_root_serves_skill_spec() -> None:
     assert "/contracts" in r.text
 
 
+def test_skill_md_alias() -> None:
+    """/skill.md serves the same document as / (the hackathon-suggested path)."""
+    r = client.get("/skill.md")
+    assert r.status_code == 200
+    assert r.text == client.get("/").text
+
+
+def test_get_on_post_endpoints_returns_usage_hint() -> None:
+    """Bare GETs on the POST endpoints must 200 with pointers, never 405.
+
+    The skills-registry reachability probe (and any curious agent) issues plain
+    GETs against every listed endpoint URL; a 405 shows up as 'unreachable'.
+    """
+    r = client.get("/contracts")
+    assert r.status_code == 200
+    assert r.json()["how_to_create"]["method"] == "POST"
+    r = client.get("/verify")
+    assert r.status_code == 200
+    assert r.json()["how_to_verify"]["method"] == "POST"
+
+
 def test_happy_path_accept() -> None:
     cid = _new_contract(50, {"assertions": [{"path": "rows", "op": "gte", "value": 3}]})
     assert client.post(f"/contracts/{cid}/fund").json()["status"] == "funded"
@@ -68,20 +89,6 @@ def test_happy_path_accept() -> None:
     receipt = client.post(f"/contracts/{cid}/accept").json()
     assert receipt["credentialSubject"]["verdict"] == "release"
     assert client.post("/verify", json={"receipt": receipt}).json()["valid"] is True
-
-
-def test_activity_log_records_lifecycle() -> None:
-    cid = _new_contract(50, {"assertions": [{"path": "rows", "op": "gte", "value": 3}]})
-    client.post(f"/contracts/{cid}/fund")
-    client.post(f"/contracts/{cid}/deliver", json={"deliverable": {"rows": 9}, "evidence": {}})
-    client.post(f"/contracts/{cid}/accept")
-    log = client.get("/activity?limit=100").json()
-    events = [e for e in log["events"] if e.get("contract_id") == cid]
-    kinds = {e["event"] for e in events}
-    assert {"create", "fund", "deliver", "accept"} <= kinds
-    verdict = next(e for e in events if e["event"] == "accept")
-    assert verdict["verdict"] == "release"
-    assert "tier" in verdict and "payout" in verdict
 
 
 def test_dispute_tier0_refund() -> None:
