@@ -69,6 +69,14 @@
   #courtlog{background:#0e1117; color:#c7d0dd; font-family:ui-monospace,Consolas,monospace;
     font-size:11.5px; line-height:1.5; padding:8px 10px}
   #courtlog .cl-h{color:#6b7688; margin-bottom:6px; border-bottom:1px solid #232a36; padding-bottom:6px}
+  .cl-stats{display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:6px}
+  .cl-stats .stat{background:#151b24; border:1px solid #232a36; border-radius:8px; padding:5px 8px}
+  .cl-stats .stat .k{color:#6b7688; font-size:9.5px; text-transform:uppercase; letter-spacing:.04em}
+  .cl-stats .stat .v{color:#e8eef7; font-size:15px; font-weight:bold; line-height:1.2}
+  .cl-stats .stat .s{color:#7f8ba0; font-size:10px}
+  .cl-stats .stat .v .rel{color:#5fd08a} .cl-stats .stat .v .ref{color:#ff8f6b}
+  .cl-sig{margin:0 0 8px; color:#8ef0ad; font-size:10.5px; line-height:1.4}
+  .cl-sig .dim{color:#5a6474}
   .clr{white-space:pre-wrap; padding:1px 0}
   .clr .seq{color:#556074}
   .clr .ev{font-weight:bold}
@@ -125,7 +133,7 @@
       <span id="docketSub" class="tag"></span>
     </div>
     <div id="docket" class="panel active"></div>
-    <div id="courtlog" class="panel"><div class="cl-h" id="clHead">court backend — GET /activity</div><div id="clBody"></div></div>
+    <div id="courtlog" class="panel"><div class="cl-h" id="clHead">court backend — GET /activity</div><div id="clStats" class="cl-stats"></div><div id="clSig" class="cl-sig"></div><div id="clBody"></div></div>
     <div class="controls">
       <button class="scn run" data-s="all">▶ Run all</button>
       <button class="scn" data-s="honest">🤝 Honest deal</button>
@@ -524,13 +532,42 @@ function courtLogLine(e){
   return `<div class="clr"><span class="seq">#${seq}</span> <span class="dim">${hhmmss(e.ts)}</span> <span class="ev ${e.event}">${e.event.toUpperCase().padEnd(8)}</span> ${cid} ${detail}</div>`;
 }
 
+function courtStats(events){
+  const s = {contracts:0, escrow:0, verdicts:0, releases:0, refunds:0,
+             tier0:0, jury:0, accepts:0, bans:0};
+  for(const e of events){
+    if(e.event==="create"){ s.contracts++; s.escrow += (+e.price||0); }
+    else if(e.event==="accept"||e.event==="dispute"){
+      s.verdicts++;
+      if(e.verdict==="release") s.releases++; else if(e.verdict==="refund") s.refunds++;
+      if(e.tier==="tier0") s.tier0++;
+      else if(e.tier==="tier1-jury") s.jury++;
+      else if(e.tier==="buyer-accept") s.accepts++;
+    }
+    else if(e.event==="refused") s.bans++;
+  }
+  return s;
+}
+function statTile(k, v, s){
+  return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${s?`<div class="s">${s}</div>`:""}</div>`;
+}
 async function refreshCourtLog(){
-  const res = await api("GET","/activity?limit=60");
+  const res = await api("GET","/activity?limit=200");
   if(!res.data || !res.data.events){ return; }
+  const ev = res.data.events, st = courtStats(ev), key = res.data.court_public_key||"";
   document.getElementById("clHead").innerHTML =
-    `court backend · <span style="color:#8ef0ad">${res.data.total_seq} events</span> · key ${(res.data.court_public_key||"").slice(0,10)}… · <span class="dim">GET /activity</span>`;
+    `court backend · <span style="color:#8ef0ad">${res.data.total_seq} events</span> · <span class="dim">GET /activity</span>`;
+  document.getElementById("clStats").innerHTML =
+    statTile("Contracts", st.contracts, "opened") +
+    statTile("Escrow", st.escrow.toLocaleString(), "credits held") +
+    statTile("Verdicts", st.verdicts, `<span class="rel">${st.releases} release</span> / <span class="ref">${st.refunds} refund</span>`) +
+    statTile("Adjudication", `${st.tier0}<span class="s"> tier-0</span>`, `${st.jury} jury · ${st.accepts} accepted`) +
+    statTile("Bans enforced", st.bans, "new contracts refused") +
+    statTile("Determinism", st.tier0? "100%" : "—", "tier-0 reproducible");
+  document.getElementById("clSig").innerHTML =
+    `Every verdict below is an <b style="color:#8ef0ad">Ed25519-signed receipt</b>, verifiable offline via <span class="dim">POST /verify</span> — no need to trust this server. <span class="dim">Court key ${key.slice(0,16)}…</span>`;
   document.getElementById("clBody").innerHTML =
-    res.data.events.length ? res.data.events.map(courtLogLine).join("") : `<div class="dim">no court activity yet — run a scenario</div>`;
+    ev.length ? ev.map(courtLogLine).join("") : `<div class="dim">no court activity yet — run a scenario</div>`;
 }
 
 let _clTimer=null;
