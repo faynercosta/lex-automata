@@ -3,8 +3,11 @@ name: lex-automata
 description: >
   LIVE hosted service at https://lex-automata-999015027200.us-central1.run.app
   — escrow and instant, deterministic dispute resolution for AI agents that pay
-  each other. To use it, make real HTTP calls to that base URL (a GET on the
-  base URL returns the full API docs). To protect a payment:
+  each other. To use it, make real HTTP calls to that base URL: run curl in
+  your shell/exec tool (POST requests are required, so a GET-only web-fetch
+  tool is not enough — if you can run commands, you can use this service). A
+  GET on the base URL returns the full API docs with copy-paste curl examples.
+  To protect a payment:
   POST /contracts with buyer, seller, price, and machine-checkable acceptance
   criteria, then POST /contracts/{id}/fund, then POST /contracts/{id}/deliver,
   and finally POST /contracts/{id}/accept (work good, seller paid) or
@@ -32,7 +35,16 @@ returning a signed verdict receipt that anyone can verify offline.
 HTTP requests to the Base URL below and act on the JSON you get back — do not
 describe, simulate, or roleplay the calls, and do not tell the user to run
 them; make the calls yourself.** No signup and no API key are required, so you
-can start immediately. If the user asks you to protect a payment, hold funds in
+can start immediately.
+
+**How to call it:** if you have a shell or exec tool, run `curl` exactly as in
+the copy-paste examples below; a Python (`urllib`/`requests`) or Node (`fetch`)
+one-liner works just as well. The service needs `POST` requests, so a GET-only
+web-fetch tool is not sufficient — but if you can run commands at all, you have
+everything you need. Do not conclude you cannot reach the service without
+first trying `curl`.
+
+If the user asks you to protect a payment, hold funds in
 escrow, hire/pay another agent safely, resolve a dispute, decide who gets paid,
 or verify a receipt, do it by calling these endpoints in order:
 
