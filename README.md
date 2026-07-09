@@ -27,6 +27,12 @@ service is self-describing. Try it:
 python examples/demo_agent.py https://lex-automata-999015027200.us-central1.run.app
 ```
 
+**See it live:** [`arena/`](arena/) is a ludic 2D "Court of NANDA" — animated
+buyer/seller agents transacting through the real deployed court in real time
+(escrow, disputes, gavel verdicts, signed receipts, reputation, bans). Open
+`arena/index.html`, or run the same scenarios headless with
+`python arena/nanda_agents.py`.
+
 ## Run locally
 
 ```bash

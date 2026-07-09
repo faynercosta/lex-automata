@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Court of NANDA — Lex Automata live arena</title>
+<style>
+  :root{
+    --parchment:#f4ecd8; --parchment-2:#e9dcc0; --ink:#2b2018; --ink-soft:#5b4a38;
+    --wine:#8b0000; --wine-2:#a52a2a; --gold:#b8860b; --gold-2:#d9a520;
+    --green:#1a7a3a; --green-2:#27a04b; --blue:#2563eb; --sky:#bfe0ea;
+    --grass:#cdd98a; --stone:#cdbfa3; --stone-d:#b3a082; --shadow:rgba(43,32,24,.18);
+    --panel:#fffaf0; --danger:#8b0000;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%, #2a3550, #171e30 60%, #10141f);
+    color:var(--ink); overflow:hidden;
+  }
+  #app{display:grid; grid-template-columns:1fr 360px; grid-template-rows:auto 1fr;
+       height:100vh; gap:10px; padding:10px;}
+  header{grid-column:1 / -1; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    background:linear-gradient(180deg,#1c1108,#2b1a0d); color:var(--parchment);
+    border-radius:14px; padding:10px 16px;
+    box-shadow:0 6px 20px rgba(0,0,0,.4); border:1px solid #5a4326;}
+  header h1{font-size:20px; letter-spacing:.5px; display:flex; align-items:center; gap:10px}
+  header h1 .crest{font-size:24px}
+  .tag{font-size:11px; color:#e9d9b8; opacity:.8}
+  .live{margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12px;
+    background:#0c1a0f; border:1px solid #1a7a3a; color:#8ef0ad; padding:5px 10px; border-radius:20px;}
+  .live .dot{width:9px;height:9px;border-radius:50%;background:#27a04b;box-shadow:0 0 8px #27a04b;
+    animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .live.off{background:#241010;border-color:#8b0000;color:#f2a1a1}
+  .live.off .dot{background:#c0392b;box-shadow:0 0 8px #c0392b;animation:none}
+
+  #stageWrap{position:relative; background:
+      linear-gradient(180deg,#bfe0ea 0%, #cfe6ec 34%, #d9e2b0 34%, #cdd98a 100%);
+    border-radius:16px; overflow:hidden; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08), 0 10px 30px rgba(0,0,0,.35);}
+  svg#stage{width:100%; height:100%; display:block}
+  .banner{position:absolute; left:50%; top:14px; transform:translateX(-50%) translateY(-80px);
+    background:var(--panel); border:2px solid var(--gold); color:var(--ink);
+    padding:8px 20px; border-radius:30px; font-weight:bold; font-size:16px; letter-spacing:.3px;
+    box-shadow:0 8px 20px var(--shadow); transition:transform .5s cubic-bezier(.2,1.4,.4,1); z-index:5;
+    display:flex; align-items:center; gap:10px; max-width:80%; text-align:center;}
+  .banner.show{transform:translateX(-50%) translateY(0)}
+  .banner.release{border-color:var(--green)} .banner.refund{border-color:var(--wine)}
+  .banner .pill{font-size:11px; padding:2px 8px; border-radius:12px; background:#eee; color:#333}
+
+  aside{background:var(--panel); border-radius:16px; display:flex; flex-direction:column;
+    overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.35); border:1px solid #e4d6b8}
+  .docket-h{background:linear-gradient(180deg,#2b1a0d,#3a2512); color:var(--parchment);
+    padding:10px 14px; font-weight:bold; letter-spacing:.4px; display:flex; align-items:center; gap:8px;
+    border-bottom:2px solid var(--gold)}
+  #docket{flex:1; overflow-y:auto; padding:8px 10px; font-size:12.5px; line-height:1.45;
+    background:repeating-linear-gradient(180deg,#fffaf0,#fffaf0 27px,#f4ecd8 27px,#f4ecd8 28px)}
+  .row{display:flex; gap:8px; padding:3px 4px; border-radius:6px; animation:slidein .35s ease}
+  @keyframes slidein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .row .ic{flex:none; width:20px; text-align:center}
+  .row .tx{flex:1} .row .tx b{color:var(--wine)}
+  .row.scene{background:#efe6cf; font-weight:bold; margin-top:6px; border-left:3px solid var(--gold)}
+  .row.verdict{background:#eaf7ee; font-weight:bold}
+  .row.verdict.refund{background:#f7eaea}
+  .row.banned{background:#f7e3e3; font-weight:bold; color:var(--danger)}
+  .row .mono{font-family:ui-monospace,Consolas,monospace; font-size:11px; color:var(--ink-soft)}
+
+  .controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px;
+    border-top:1px solid #e4d6b8; background:#fbf4e4}
+  button.scn{border:1px solid #caa; background:linear-gradient(180deg,#fff,#f0e6cf);
+    color:var(--ink); padding:7px 11px; border-radius:9px; font-size:12.5px; cursor:pointer;
+    font-weight:600; box-shadow:0 2px 0 #d9c9a3; transition:transform .1s}
+  button.scn:hover{transform:translateY(-1px)} button.scn:active{transform:translateY(1px);box-shadow:none}
+  button.scn:disabled{opacity:.5; cursor:not-allowed; transform:none}
+  button.run{background:linear-gradient(180deg,#a52a2a,#8b0000); color:#fff; border-color:#6d0000; box-shadow:0 2px 0 #5a0000}
+  .speed{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); margin-left:auto}
+  .speed input{width:90px}
+  .legend{position:absolute; left:12px; bottom:10px; display:flex; gap:12px; flex-wrap:wrap;
+    background:rgba(255,250,240,.82); border:1px solid #e0d2b2; border-radius:10px; padding:6px 10px; font-size:11px}
+  .legend b{color:var(--wine)}
+  .credit{position:absolute; right:12px; bottom:8px; font-size:10.5px; color:#3a2c1c; opacity:.6}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1><span class="crest">⚖️</span> Court of NANDA <span class="tag">· Lex Automata — a live courtroom for agent‑to‑agent commerce</span></h1>
+    <div id="live" class="live off"><span class="dot"></span><span id="liveTxt">connecting…</span></div>
+  </header>
+
+  <div id="stageWrap">
+    <div id="banner" class="banner"></div>
+    <svg id="stage" viewBox="0 0 960 620" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend">
+      <span>🪙 escrow</span><span>📦 deliverable</span><span>🔨 verdict</span>
+      <span>🧾 signed receipt</span><span>⭐ reputation</span><span><b>⛔ banned</b></span>
+    </div>
+    <div class="credit">every action is a real HTTPS call to the deployed court</div>
+  </div>
+
+  <aside>
+    <div class="docket-h">📜 Court Docket <span id="docketSub" class="tag" style="margin-left:auto;font-weight:normal"></span></div>
+    <div id="docket"></div>
+    <div class="controls">
+      <button class="scn run" data-s="all">▶ Run all</button>
+      <button class="scn" data-s="honest">🤝 Honest deal</button>
+      <button class="scn" data-s="bad">📉 Bad delivery</button>
+      <button class="scn" data-s="frivolous">🙅 Frivolous buyer</button>
+      <button class="scn" data-s="semantic">🧠 Semantic jury</button>
+      <button class="scn" data-s="ban">⛔ The ban</button>
+      <label class="speed">🐢<input id="speed" type="range" min="0.4" max="2.2" step="0.1" value="1">🐇</label>
+    </div>
+  </aside>
+</div>
+
+<script>
+const BASE = "https://lex-automata-999015027200.us-central1.run.app";
+const SVGNS = "http://www.w3.org/2000/svg";
+const stage = document.getElementById("stage");
+const docket = document.getElementById("docket");
+const banner = document.getElementById("banner");
+let SPEED = 1;
+document.getElementById("speed").addEventListener("input", e=> SPEED = +e.target.value);
+
+const sleep = ms => new Promise(r=> setTimeout(r, ms / SPEED));
+
+// ---- tiny SVG helpers -----------------------------------------------------
+function el(tag, attrs={}, parent=stage){
+  const n = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) n.setAttribute(k, attrs[k]);
+  parent.appendChild(n); return n;
+}
+function group(x,y,parent=stage){ const g=el("g",{transform:`translate(${x},${y})`},parent); return g; }
+
+// ---- scenery --------------------------------------------------------------
+function buildScenery(){
+  stage.innerHTML="";
+  // sun
+  el("circle",{cx:70,cy:70,r:34,fill:"#ffe9a8",opacity:.9});
+  el("circle",{cx:70,cy:70,r:46,fill:"#ffe9a8",opacity:.25});
+  // clouds
+  for(const [x,y,s] of [[250,60,1],[640,50,1.3],[840,110,.9]]){
+    const g=group(x,y); for(const [dx,r] of [[0,16],[20,22],[42,15]]) el("circle",{cx:dx,cy:0,r:r*s,fill:"#ffffff",opacity:.85},g);
+  }
+  // distant NANDA town skyline
+  for(let i=0;i<12;i++){
+    const x=40+i*80, h=24+((i*37)%40);
+    el("rect",{x, y:212-h, width:34, height:h, rx:2, fill:"#aeb9c9", opacity:.5});
+  }
+  // ground road strip in front of courthouse
+  el("rect",{x:0,y:210,width:960,height:12,fill:"#b9c98a"});
+  el("ellipse",{cx:480,cy:470,rx:360,ry:60,fill:"#c3d07f",opacity:.6});
+
+  buildCourthouse(480, 150);
+  // plinths / labels for the two sides
+  sideLabel(150, 250, "PLAINTIFFS · buyers", "#274b8b");
+  sideLabel(810, 250, "DEFENDANTS · sellers", "#7a3e12");
+  // ledger shelf (where receipts fly)
+  const led = group(872, 300);
+  el("rect",{x:-40,y:0,width:80,height:120,rx:6,fill:"#7a5a34",stroke:"#5a4326"},led);
+  el("text",{x:0,y:-8,"text-anchor":"middle","font-size":11,fill:"#3a2c1c","font-weight":"bold"},led).textContent="LEDGER";
+  window._ledger = {x:872,y:320};
+}
+function sideLabel(x,y,txt,color){
+  const g=group(x,y); el("text",{x:0,y:0,"text-anchor":"middle","font-size":12,fill:color,"font-weight":"bold","letter-spacing":".5"},g).textContent=txt;
+}
+function buildCourthouse(cx,cy){
+  const g=group(cx,cy); g.setAttribute("id","court");
+  // steps
+  el("rect",{x:-150,y:120,width:300,height:14,fill:"#cdbfa3"},g);
+  el("rect",{x:-130,y:106,width:260,height:14,fill:"#d8ccb2"},g);
+  // base
+  el("rect",{x:-120,y:40,width:240,height:70,fill:"#efe7d3",stroke:"#c9b58e"},g);
+  // columns
+  for(let i=0;i<5;i++){ el("rect",{x:-108+i*52,y:44,width:16,height:62,fill:"#f6f0e2",stroke:"#d8c9a6"},g);}
+  // pediment
+  el("polygon",{points:"-130,40 130,40 0,-24",fill:"#e9dcc0",stroke:"#c9b58e"},g);
+  el("polygon",{points:"-100,34 100,34 0,-12",fill:"#f7f1e3"},g);
+  // scales emblem
+  el("text",{x:0,y:26,"text-anchor":"middle","font-size":26},g).textContent="⚖️";
+  // sign
+  const sign=el("rect",{x:-84,y:70,width:168,height:26,rx:5,fill:"#2b1a0d"},g);
+  el("text",{x:0,y:88,"text-anchor":"middle","font-size":15,fill:"#f0d98a","font-weight":"bold","letter-spacing":"1"},g).textContent="LEX AUTOMATA";
+  // vault (escrow) glowing slot
+  const vault=group(0,150,g); vault.setAttribute("id","vault");
+  el("rect",{x:-34,y:-6,width:68,height:40,rx:6,fill:"#3a2c1c",stroke:"#b8860b","stroke-width":2},vault);
+  el("text",{x:0,y:20,"text-anchor":"middle","font-size":13,fill:"#f0d98a"},vault).textContent="ESCROW";
+  window._vault={x:cx, y:cy+150};
+  // the judge automaton on the steps
+  const j=group(0,150,g); j.setAttribute("id","judge");
+  el("circle",{cx:0,cy:-2,r:19,fill:"#e7ecf3",stroke:"#8a97a8","stroke-width":2},j);
+  el("text",{x:0,y:6,"text-anchor":"middle","font-size":22},j).textContent="🤖";
+  el("text",{x:0,y:34,"text-anchor":"middle","font-size":10,fill:"#3a2c1c","font-weight":"bold"},j).textContent="Judge Automaton";
+  // gavel
+  const gav=group(26,-6,j); gav.setAttribute("id","gavel");
+  el("rect",{x:-2,y:-14,width:5,height:20,rx:2,fill:"#7a5a34"},gav);
+  el("rect",{x:-9,y:-22,width:18,height:12,rx:3,fill:"#8a5a2a",stroke:"#5a3a18"},gav);
+  window._judge={x:cx,y:cy+150};
+}
+
+// ---- characters -----------------------------------------------------------
+const FACES = {
+  buyer:"🧑‍💼", seller:"🧑‍🔧", cheat:"😼", frivolous:"🤨", wordsmith:"📝", repeat:"🦝"
+};
+const COLORS = { buyer:"#2f5fb0", seller:"#b06a2f" };
+class Character{
+  constructor(opts){
+    this.name=opts.name; this.side=opts.side; this.face=opts.face||FACES[opts.kind]||"🙂";
+    this.did=opts.did||did(opts.kind||opts.side);
+    this.color=opts.side==="left"?COLORS.buyer:COLORS.seller;
+    this.home = opts.side==="left" ? {x:150,y:360} : {x:810,y:360};
+    this.g = group(this.home.x, this.home.y);
+    this.g.setAttribute("opacity","0");
+    this.disc = el("circle",{cx:0,cy:0,r:30,fill:"#fff",stroke:this.color,"stroke-width":3}, this.g);
+    el("ellipse",{cx:0,cy:34,rx:26,ry:7,fill:"rgba(0,0,0,.12)"},this.g); // shadow
+    this.faceT = el("text",{x:0,y:11,"text-anchor":"middle","font-size":34},this.g); this.faceT.textContent=this.face;
+    this.nameT = el("text",{x:0,y:54,"text-anchor":"middle","font-size":12,fill:"#2b2018","font-weight":"bold"},this.g); this.nameT.textContent=this.name;
+    this.stars = el("text",{x:0,y:-38,"text-anchor":"middle","font-size":13},this.g);
+    this.badge = null;
+    this.g.getBoundingClientRect(); // reflow
+    this.g.style.transition="transform .8s cubic-bezier(.3,.7,.3,1), opacity .5s";
+    requestAnimationFrame(()=> this.g.setAttribute("opacity","1"));
+  }
+  moveTo(x,y){ this.g.style.transition="transform .9s cubic-bezier(.3,.7,.3,1), opacity .5s";
+    this.g.setAttribute("transform",`translate(${x},${y})`); return sleep(950); }
+  home_(){ return this.moveTo(this.home.x,this.home.y); }
+  async say(text, kind="neutral"){
+    const bub=group(0,-60,this.g); bub.setAttribute("opacity","0"); bub.style.transition="opacity .25s, transform .3s";
+    const w=Math.max(64, text.length*7.0+20);
+    const fill = kind==="angry"?"#f7dede":kind==="happy"?"#e3f6e8":"#fffef8";
+    const stroke = kind==="angry"?"#c0392b":kind==="happy"?"#1a7a3a":"#c9b58e";
+    el("rect",{x:-w/2,y:-24,width:w,height:30,rx:12,fill,stroke,"stroke-width":1.5},bub);
+    el("polygon",{points:"-6,4 6,4 0,16",fill:stroke},bub);
+    el("text",{x:0,y:-4,"text-anchor":"middle","font-size":12,fill:"#2b2018"},bub).textContent=text;
+    requestAnimationFrame(()=>{ bub.setAttribute("opacity","1"); bub.setAttribute("transform","translate(0,-66)");});
+    await sleep(1500);
+    bub.setAttribute("opacity","0"); setTimeout(()=>bub.remove(), 400);
+  }
+  setReputation(standing, score){
+    const filled = Math.round((score||0)*5);
+    this.stars.textContent = "★★★★★".slice(0,filled)+"☆☆☆☆☆".slice(0,5-filled);
+    this.stars.setAttribute("fill", standing==="GOOD"?"#1a7a3a":standing==="BANNED"?"#8b0000":standing==="WATCH"?"#b8860b":"#8a97a8");
+    if(this.badge) this.badge.remove();
+    this.badge=group(0,-24,this.g);
+    const col={NEW:"#8a97a8",GOOD:"#1a7a3a",WATCH:"#b8860b",BANNED:"#8b0000"}[standing]||"#8a97a8";
+    el("rect",{x:-26,y:-9,width:52,height:16,rx:8,fill:col},this.badge);
+    el("text",{x:0,y:3,"text-anchor":"middle","font-size":10,fill:"#fff","font-weight":"bold"},this.badge).textContent=standing;
+  }
+  async jail(){
+    this.faceT.textContent="😵"; this.disc.setAttribute("stroke","#8b0000");
+    const bars=group(0,0,this.g);
+    for(let i=-2;i<=2;i++) el("rect",{x:i*11-2,y:-30,width:4,height:60,rx:2,fill:"#3a3a3a"},bars);
+    el("rect",{x:-30,y:-32,width:60,height:64,rx:6,fill:"none",stroke:"#3a3a3a","stroke-width":4},bars);
+    bars.setAttribute("opacity","0"); bars.style.transition="opacity .3s";
+    requestAnimationFrame(()=>bars.setAttribute("opacity","1"));
+    await sleep(400);
+  }
+  remove(){ this.g.style.transition="opacity .5s"; this.g.setAttribute("opacity","0"); setTimeout(()=>this.g.remove(),600); }
+}
+
+// ---- coins & tokens flying ------------------------------------------------
+async function fly(emoji, from, to, {n=1, spread=0}={}){
+  const proms=[];
+  for(let i=0;i<n;i++){
+    const t=el("text",{x:from.x,y:from.y,"text-anchor":"middle","font-size":20,opacity:1});
+    t.textContent=emoji;
+    t.style.transition=`transform ${0.8}s cubic-bezier(.4,.1,.3,1), opacity .8s`;
+    const jx=(Math.random()-.5)*spread, jy=(Math.random()-.5)*spread;
+    requestAnimationFrame(()=>{ t.setAttribute("transform",`translate(${to.x-from.x+jx},${to.y-from.y+jy})`);});
+    proms.push(sleep(60*i));
+    setTimeout(()=>{ t.style.opacity=0; setTimeout(()=>t.remove(),400);}, (760)/SPEED + 60*i);
+  }
+  await Promise.all(proms); await sleep(780);
+}
+async function gavelBang(){
+  const g=document.getElementById("gavel"); if(!g) return;
+  g.style.transition="transform .12s ease"; g.style.transformOrigin="0 6px";
+  for(let i=0;i<3;i++){ g.setAttribute("transform","translate(26,-6) rotate(-42)"); await sleep(120);
+    g.setAttribute("transform","translate(26,-6) rotate(4)"); await sleep(120);}
+  g.setAttribute("transform","translate(26,-6)");
+}
+function pulseVault(){ const v=document.getElementById("vault"); if(!v)return;
+  const r=v.querySelector("rect"); r.style.transition="all .25s";
+  r.setAttribute("fill","#6b4a1a"); setTimeout(()=>r.setAttribute("fill","#3a2c1c"),350);}
+
+function showBanner(html, cls=""){
+  banner.className="banner "+cls; banner.innerHTML=html;
+  requestAnimationFrame(()=>banner.classList.add("show"));
+  setTimeout(()=>banner.classList.remove("show"), 2600/SPEED);
+}
+
+// ---- docket log -----------------------------------------------------------
+function log(icon, html, cls=""){
+  const row=document.createElement("div"); row.className="row "+cls;
+  row.innerHTML=`<div class="ic">${icon}</div><div class="tx">${html}</div>`;
+  docket.appendChild(row); docket.scrollTop=docket.scrollHeight;
+}
+
+// ---- live court client ----------------------------------------------------
+async function api(method, path, body){
+  const opt={method, headers:{"Content-Type":"application/json"}};
+  if(method==="POST") opt.body=JSON.stringify(body||{});
+  const res=await fetch(BASE+path, opt);
+  let data=null; try{ data=await res.json(); }catch{ data=await res.text(); }
+  return {status:res.status, data};
+}
+const did = role => `did:nanda:${role}-${Math.random().toString(36).slice(2,8)}`;
+
+// ---- scenarios ------------------------------------------------------------
+let busy=false;
+function setBusy(b){ busy=b; document.querySelectorAll("button.scn").forEach(x=>x.disabled=b); }
+
+async function tierName(t){ return {tier0:"Tier‑0 · deterministic replay", "tier1-jury":"Tier‑1 · LLM jury", "buyer-accept":"direct acceptance"}[t]||t; }
+
+async function runDeal({buyerName, buyerKind, sellerName, sellerKind, price, need, delivered, acceptance, action, buyerLine, sellerLine}){
+  buildScenery();
+  const buyer=new Character({name:buyerName, side:"left", kind:buyerKind});
+  const seller=new Character({name:sellerName, side:"right", kind:sellerKind});
+  buyer.setReputation("NEW",0.5); seller.setReputation("NEW",0.5);
+  await sleep(500);
+
+  // 1. contract
+  await buyer.say(buyerLine, "neutral");
+  const c=await api("POST","/contracts",{buyer:buyer.did, seller:seller.did, price, acceptance});
+  const cid=c.data.contract_id;
+  log("📜", `<b>${buyerName}</b> opens contract <span class="mono">${cid.slice(0,12)}</span> — needs ${need}, offers ${price} credits`, "");
+  // 2. fund escrow — coins fly to vault
+  await buyer.moveTo(330,360);
+  await fly("🪙", {x:330,y:330}, window._vault, {n:Math.min(6,Math.ceil(price/10)), spread:24});
+  await api("POST",`/contracts/${cid}/fund`,{});
+  pulseVault();
+  log("🪙", `${buyerName} funds escrow — <b>${price}</b> credits locked in the court vault`, "");
+  await buyer.home_();
+  // 3. seller delivers
+  await seller.say(sellerLine, sellerKind==="cheat"||sellerKind==="repeat"?"angry":"neutral");
+  await seller.moveTo(630,360);
+  await fly("📦", {x:630,y:330}, {x:window._vault.x, y:window._vault.y-40}, {n:1});
+  await api("POST",`/contracts/${cid}/deliver`,{deliverable:delivered, evidence:{}});
+  log("📦", `<b>${sellerName}</b> delivers <span class="mono">${JSON.stringify(delivered)}</span>`, "");
+  await seller.home_();
+  await sleep(300);
+
+  // 4. accept or dispute
+  let r;
+  if(action==="accept"){
+    await buyer.say("Looks great — accepted!","happy");
+    r=await api("POST",`/contracts/${cid}/accept`,{});
+    log("🤝", `${buyerName} <b>accepts</b> the work`, "");
+  }else{
+    await buyer.moveTo(400,400);
+    await buyer.say(action==="frivolous"?"I refuse to pay!":"I dispute this!","angry");
+    log("⚖️", `${buyerName} <b>disputes</b> — the court replays the acceptance criteria`, "");
+    await gavelBang();
+    r=await api("POST",`/contracts/${cid}/dispute`,{reason:"dispute"});
+    await buyer.home_();
+  }
+  const cs=r.data.credentialSubject;
+  const winnerDid=Object.keys(cs.payout)[0];
+  const amount=Object.values(cs.payout)[0];
+  const winner = winnerDid===buyer.did ? buyer : seller;
+  const tn=await tierName(cs.tier);
+
+  // 5. verdict
+  const isRelease=cs.verdict==="release";
+  showBanner(`🔨 VERDICT: <b>${cs.verdict.toUpperCase()}</b> <span class="pill">${tn}</span>`, isRelease?"release":"refund");
+  log(isRelease?"🟢":"🔴", `<b>VERDICT ${cs.verdict.toUpperCase()}</b> via ${tn} — pays <b>${winner.name}</b> ${amount}`, "verdict "+(isRelease?"":"refund"));
+  // coins fly from vault to winner
+  await fly("🪙", {x:window._vault.x, y:window._vault.y}, {x:winner.g.transform.baseVal[0].matrix.e||winner.home.x, y:winner.home.y}, {n:Math.min(6,Math.ceil(amount/10)), spread:20});
+  await winner.say("💰","happy");
+  // 6. signed receipt → ledger, verified
+  const v=await api("POST","/verify",{receipt:r.data});
+  await fly("🧾", window._judge, window._ledger, {n:1});
+  log("🧾", `signed receipt <span class="mono">${r.data.id.split(':').pop().slice(0,10)}</span> filed — verifies offline: <b>${v.data.valid}</b>`, "");
+  // 7. reputation update (seller)
+  const rep=await api("GET",`/agents/${seller.did}/reputation`);
+  const s=rep.data.as_seller;
+  seller.setReputation(rep.data.standing, s.score);
+  log("⭐", `${sellerName} standing → <b>${rep.data.standing}</b> (score ${s.score.toFixed(2)})`, "");
+  await sleep(900);
+  return {buyer, seller};
+}
+
+const SCEN = {
+  honest: async ()=>{
+    log("🎬","<b>HONEST DEAL</b> — a fair job, paid in full","scene");
+    await runDeal({buyerName:"Buyer Bo",buyerKind:"buyer",sellerName:"Honest Hana",sellerKind:"seller",
+      price:50, need:"rows ≥ 3", delivered:{rows:7},
+      acceptance:{schema:{type:"object",required:["rows"]},assertions:[{path:"rows",op:"gte",value:3}]},
+      action:"accept", buyerLine:"I need ≥ 3 rows for 50cr", sellerLine:"Here are 7 clean rows!"});
+  },
+  bad: async ()=>{
+    log("🎬","<b>BAD DELIVERY</b> — seller cuts corners; Tier‑0 refunds the buyer","scene");
+    await runDeal({buyerName:"Buyer Bo",buyerKind:"buyer",sellerName:"Corner‑Cutter Cid",sellerKind:"cheat",
+      price:50, need:"rows ≥ 100", delivered:{rows:12},
+      acceptance:{schema:{type:"object",required:["rows"]},assertions:[{path:"rows",op:"gte",value:100}]},
+      action:"dispute", buyerLine:"I need ≥ 100 rows for 50cr", sellerLine:"Eh, 12 is close enough…"});
+  },
+  frivolous: async ()=>{
+    log("🎬","<b>FRIVOLOUS DISPUTE</b> — buyer disputes good work and loses","scene");
+    await runDeal({buyerName:"Frivolous Fritz",buyerKind:"frivolous",sellerName:"Honest Hana",sellerKind:"seller",
+      price:30, need:"rows ≥ 5", delivered:{rows:9},
+      acceptance:{assertions:[{path:"rows",op:"gte",value:5}]},
+      action:"frivolous", buyerLine:"≥ 5 rows please", sellerLine:"Done — 9 rows!"});
+  },
+  semantic: async ()=>{
+    log("🎬","<b>SEMANTIC CASE</b> — 'faithful summary' can't be machine‑checked → jury","scene");
+    await runDeal({buyerName:"Buyer Bo",buyerKind:"buyer",sellerName:"Wordsmith Wren",sellerKind:"wordsmith",
+      price:40, need:"a faithful summary", delivered:{summary:"A concise, on‑topic summary."},
+      acceptance:{schema:{type:"object",required:["summary"]},assertions:[{path:"summary",op:"nonempty",semantic:true}]},
+      action:"dispute", buyerLine:"Summarize this faithfully", sellerLine:"Here's your summary."});
+  },
+  ban: async ()=>{
+    log("🎬","<b>THE BAN</b> — a serial under‑deliverer loses 3 disputes and is barred","scene");
+    buildScenery();
+    const seller=new Character({name:"Repeat‑Offender Rex", side:"right", kind:"repeat"});
+    seller.setReputation("NEW",0.5); await sleep(400);
+    for(let i=1;i<=3;i++){
+      const buyer=new Character({name:`Buyer ${i}`, side:"left", kind:"buyer"});
+      buyer.setReputation("NEW",0.5); await sleep(300);
+      const c=await api("POST","/contracts",{buyer:buyer.did,seller:seller.did,price:10,acceptance:{assertions:[{path:"rows",op:"gte",value:100}]}});
+      const cid=c.data.contract_id;
+      await buyer.moveTo(330,360); await fly("🪙",{x:330,y:330},window._vault,{n:1}); await api("POST",`/contracts/${cid}/fund`,{}); pulseVault(); await buyer.home_();
+      await seller.say("…barely anything.","angry");
+      await api("POST",`/contracts/${cid}/deliver`,{deliverable:{rows:1},evidence:{}});
+      await buyer.moveTo(400,400); await buyer.say("I dispute!","angry");
+      await gavelBang();
+      const r=await api("POST",`/contracts/${cid}/dispute`,{reason:"nothing delivered"});
+      await fly("🪙",window._vault,{x:buyer.home.x,y:buyer.home.y},{n:1});
+      const rep=await api("GET",`/agents/${seller.did}/reputation`); const s=rep.data.as_seller;
+      seller.setReputation(rep.data.standing, s.score);
+      log(rep.data.standing==="BANNED"?"⛔":"🔴", `loss #${i}: refund → <b>${rep.data.standing}</b> (score ${s.score.toFixed(2)}, ${s.negative} losses)`, rep.data.standing==="BANNED"?"banned":"verdict refund");
+      buyer.remove(); await sleep(500);
+    }
+    // attempt a 4th contract → refused
+    await seller.say("Give me more work!","angry");
+    const blocked=await api("POST","/contracts",{buyer:did("buyer"),seller:seller.did,price:10,acceptance:{}});
+    if(blocked.status===400){
+      await seller.jail();
+      showBanner(`⛔ <b>BANNED</b> — court refuses new work <span class="pill">HTTP 400</span>`, "refund");
+      log("⛔", `<b>BANNED</b>: the court <b>refuses ${'Repeat‑Offender Rex'}</b> a new contract — <span class="mono">HTTP 400</span>`, "banned");
+    }
+    await sleep(800);
+  },
+};
+
+async function run(name){
+  if(busy) return; setBusy(true);
+  try{
+    if(name==="all"){ for(const k of ["honest","bad","frivolous","semantic","ban"]){ await SCEN[k](); await sleep(700);} }
+    else await SCEN[name]();
+  }catch(err){ log("⚠️", `error: ${err.message}`, "banned"); console.error(err); }
+  setBusy(false);
+}
+document.querySelectorAll("button.scn").forEach(b=> b.addEventListener("click",()=>run(b.dataset.s)));
+
+// ---- boot: connect to live court -----------------------------------------
+buildScenery();
+(async ()=>{
+  const liveEl=document.getElementById("live"), txt=document.getElementById("liveTxt");
+  try{
+    const h=await api("GET","/health");
+    if(h.data.status==="ok"){
+      liveEl.classList.remove("off");
+      txt.textContent="LIVE · court key "+(h.data.court_public_key||"").slice(0,10)+"…";
+      document.getElementById("docketSub").textContent="connected";
+      log("🏛️","Connected to the live Court of NANDA. Press a scenario to begin.","scene");
+    }
+  }catch(e){
+    txt.textContent="offline — cannot reach court";
+    log("⚠️","Could not reach the live court (network/CORS).","banned");
+  }
+})();
+</script>
+</body>
+</html>

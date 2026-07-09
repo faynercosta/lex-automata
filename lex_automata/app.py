@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -37,6 +38,15 @@ app = FastAPI(
     version="1.0.0",
     description="Escrow, deterministic-first arbitration, and verifiable verdict "
     "receipts for the Internet of AI Agents (NANDA).",
+)
+
+# The API is public and unauthenticated by design, so browser-based agents and
+# visualizers (e.g. the Court of NANDA arena) can call it cross-origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 # One court instance per process. A fixed seed (LEX_COURT_SEED) keeps the
