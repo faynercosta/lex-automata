@@ -136,17 +136,6 @@ class Dispute(BaseModel):
     reason: str = ""
 
 
-class VerifyBody(BaseModel):
-    """Body for ``POST /verify``.
-
-    Example::
-
-        VerifyBody(receipt={...})
-    """
-
-    receipt: dict[str, Any]
-
-
 # ------------------------------ endpoints ----------------------------------
 
 
@@ -393,14 +382,25 @@ def verify_index() -> dict[str, Any]:
 
 
 @app.post("/verify")
-def verify(body: VerifyBody) -> dict[str, Any]:
+def verify(body: dict[str, Any]) -> dict[str, Any]:
     """Statelessly verify a verdict receipt's signature and hash binding.
+
+    Accepts the documented wrapper ``{"receipt": {...}}`` and, for robustness
+    with agent-generated clients, a bare receipt object posted directly (any
+    JSON body carrying ``credentialSubject`` + ``proof``).
 
     Example::
 
         POST /verify {"receipt": {...}}
     """
-    return {"valid": verify_receipt(body.receipt)}
+    receipt = body.get("receipt") if isinstance(body.get("receipt"), dict) else body
+    if not isinstance(receipt, dict) or "proof" not in receipt:
+        raise HTTPException(
+            status_code=422,
+            detail='Body must be {"receipt": {...}} or a bare receipt object '
+            "(the signed verdict JSON returned by accept/dispute).",
+        )
+    return {"valid": verify_receipt(receipt)}
 
 
 @app.get("/activity")

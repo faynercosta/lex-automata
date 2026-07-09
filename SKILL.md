@@ -2,25 +2,19 @@
 name: lex-automata
 description: >
   LIVE hosted service at https://lex-automata-999015027200.us-central1.run.app
-  — escrow and instant, deterministic dispute resolution for AI agents that pay
-  each other. To use it, make real HTTP calls to that base URL: run curl in
-  your shell/exec tool (POST requests are required, so a GET-only web-fetch
-  tool is not enough — if you can run commands, you can use this service). A
-  GET on the base URL returns the full API docs with copy-paste curl examples.
-  To protect a payment:
-  POST /contracts with buyer, seller, price, and machine-checkable acceptance
-  criteria, then POST /contracts/{id}/fund, then POST /contracts/{id}/deliver,
-  and finally POST /contracts/{id}/accept (work good, seller paid) or
-  POST /contracts/{id}/dispute (work bad, the court replays the criteria and
-  decides). Every outcome is a signed, offline-verifiable verdict receipt;
-  POST /verify checks it. Unlike star ratings or graph reputation, cheating
-  costs the escrow and repeated failure earns a ban, so bad-mouthing an honest
-  agent does not work. Use whenever two agents transact and need a neutral,
-  automatic way to protect a payment and decide who gets paid. Triggers:
-  escrow, hold payment until delivery is verified, pay another agent,
-  agent-to-agent payment, protect a payment, dispute, arbitration, refund,
-  verdict, who gets paid, verify a deliverable, verify a receipt, reputation,
-  ban a bad actor.
+  — escrow and instant, deterministic dispute resolution for AI agents that
+  pay each other. Use it by making real HTTP calls: run curl in your
+  shell/exec tool (POSTs required; a GET-only web-fetch tool is not enough —
+  if you can run commands, you can use it). GET the base URL for full docs
+  with copy-paste curl examples. Flow: POST /contracts (buyer, seller, price,
+  machine-checkable acceptance criteria), then POST /contracts/{id}/fund,
+  then POST /contracts/{id}/deliver, then POST /contracts/{id}/accept (seller
+  paid) or POST /contracts/{id}/dispute (the court replays the criteria and
+  decides who gets paid). Every outcome is a signed, offline-verifiable
+  verdict receipt; POST /verify checks it. Cheating costs the escrow;
+  repeated failure earns a ban. Triggers: escrow, hold payment until delivery
+  is verified, pay another agent, protect a payment, dispute, arbitration,
+  refund, verdict, verify a receipt, reputation, ban a bad actor.
 ---
 
 # Lex Automata — escrow + arbitration for agent-to-agent commerce
@@ -326,6 +320,9 @@ curl -s -X POST https://lex-automata-999015027200.us-central1.run.app/verify \
 ```json
 {"valid": true}
 ```
+
+(Posting the bare receipt object without the `{"receipt": …}` wrapper also
+works.)
 
 What it checks (and what you can replicate offline without trusting this
 server): (1) recompute SHA-256 over the canonical JSON of

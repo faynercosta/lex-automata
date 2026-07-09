@@ -91,6 +91,17 @@ def test_happy_path_accept() -> None:
     assert client.post("/verify", json={"receipt": receipt}).json()["valid"] is True
 
 
+def test_verify_accepts_bare_receipt_and_rejects_garbage() -> None:
+    """Agent-generated clients often POST the receipt unwrapped; both shapes work."""
+    cid = _new_contract(10, {"assertions": [{"path": "ok", "op": "eq", "value": True}]})
+    client.post(f"/contracts/{cid}/fund")
+    client.post(f"/contracts/{cid}/deliver", json={"deliverable": {"ok": True}, "evidence": {}})
+    receipt = client.post(f"/contracts/{cid}/accept").json()
+    assert client.post("/verify", json=receipt).json()["valid"] is True
+    r = client.post("/verify", json={"something": "else"})
+    assert r.status_code == 422
+
+
 def test_dispute_tier0_refund() -> None:
     cid = _new_contract(40, {"assertions": [{"path": "rows", "op": "gte", "value": 100}]})
     client.post(f"/contracts/{cid}/fund")
