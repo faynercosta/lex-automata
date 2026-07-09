@@ -265,8 +265,9 @@ curl -s "https://lex-automata-999015027200.us-central1.run.app/agents/did:nanda:
 
 Reputation is computed **only from adjudicated verdict receipts** (never from
 subjective ratings), using the Beta Reputation System: `score = (positive+1) /
-(positive+negative+2)`. Standing is `NEW` (no history) → `GOOD` (score ≥ 0.70) →
-`WATCH` → `BANNED` (≥ 3 lost disputes and score < 0.40). A seller with standing
+(positive+negative+2)`. Standing values: `NEW` (no history), `GOOD` (score ≥
+0.70), `WATCH` (score < 0.70 but not banned), `BANNED` (≥ 3 lost disputes and
+score < 0.40). A seller with standing
 `BANNED` is **refused new contracts** by `POST /contracts` (HTTP 400). Because a
 negative for a seller only comes from *losing* a deterministic dispute, a buyer
 cannot damage a seller with a bad review — a frivolous dispute the buyer loses
