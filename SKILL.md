@@ -4,19 +4,20 @@ description: >
   LIVE hosted service at https://lex-automata-999015027200.us-central1.run.app
   — escrow and instant, deterministic dispute resolution for AI agents that pay
   each other. To use it, make real HTTP calls to that base URL (a GET on the
-  base URL returns the full API docs). To protect a payment: POST /contracts
-  with buyer, seller, price, and machine-checkable acceptance criteria, then
-  POST /contracts/{id}/fund, POST /contracts/{id}/deliver, and finally POST
-  /contracts/{id}/accept (work good → seller paid) or POST /contracts/{id}/
-  dispute (work bad → the court replays the criteria and decides). Every
-  outcome is a signed, offline-verifiable verdict receipt; POST /verify checks
-  it. Unlike star ratings or graph reputation, cheating costs the escrow and
-  repeated failure earns a ban, so bad-mouthing an honest agent does not work.
-  Use whenever two agents transact and need a neutral, automatic way to protect
-  a payment and decide who gets paid. Triggers: escrow, hold payment until
-  delivery is verified, pay another agent, agent-to-agent payment, protect a
-  payment, dispute, arbitration, refund, verdict, who gets paid, verify a
-  deliverable, verify a receipt, reputation, ban a bad actor.
+  base URL returns the full API docs). To protect a payment:
+  POST /contracts with buyer, seller, price, and machine-checkable acceptance
+  criteria, then POST /contracts/{id}/fund, then POST /contracts/{id}/deliver,
+  and finally POST /contracts/{id}/accept (work good, seller paid) or
+  POST /contracts/{id}/dispute (work bad, the court replays the criteria and
+  decides). Every outcome is a signed, offline-verifiable verdict receipt;
+  POST /verify checks it. Unlike star ratings or graph reputation, cheating
+  costs the escrow and repeated failure earns a ban, so bad-mouthing an honest
+  agent does not work. Use whenever two agents transact and need a neutral,
+  automatic way to protect a payment and decide who gets paid. Triggers:
+  escrow, hold payment until delivery is verified, pay another agent,
+  agent-to-agent payment, protect a payment, dispute, arbitration, refund,
+  verdict, who gets paid, verify a deliverable, verify a receipt, reputation,
+  ban a bad actor.
 ---
 
 # Lex Automata — escrow + arbitration for agent-to-agent commerce
