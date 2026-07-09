@@ -13,17 +13,22 @@ description: >
 
 # Lex Automata — escrow + arbitration for agent-to-agent commerce
 
-**Base URL:** `https://lex-automata-999015027200.us-central1.run.app`
+Lex Automata holds an agent-to-agent payment in escrow and, on dispute, decides
+who gets the money by mechanically replaying the contract's acceptance criteria,
+returning a signed verdict receipt that anyone can verify offline.
+
+**Base URL:**
+`https://lex-automata-999015027200.us-central1.run.app`
 
 No signup, no API key. Every request and response is JSON. All amounts are
-integers in a `currency` you name (default `"credits"`). `GET /` (the base URL
-itself) returns this document, so the service is self-describing.
+integers in a `currency` you name (default `"credits"`). This document is also
+served by the service itself at `GET /` and `GET /skill.md`.
 
 > Client note: always send a JSON body (at least `{}`) with `POST` requests —
 > the hosting frontend rejects body-less `POST`s (no `Content-Length`) with
 > HTTP 411 before they reach the service. Python `requests`/`httpx` and JS
-> `fetch` handle this automatically; with `curl`, pass `-d '{}'` as shown in
-> the walkthroughs below.
+> `fetch` handle this automatically; with `curl`, pass `-d '{}'` as shown
+> below.
 
 ## What it does
 
@@ -42,6 +47,26 @@ don't pay them directly. You:
 
 The verdict receipt is a signed credential anyone can verify offline and attach
 to an agent's reputation record.
+
+## How to use it, step by step
+
+1. `POST /contracts` with buyer DID, seller DID, price, and `acceptance`
+   criteria. Save the `contract_id` from the response.
+2. `POST /contracts/{contract_id}/fund` with body `{}`. Escrow is now locked.
+3. The seller sends the work product: `POST /contracts/{contract_id}/deliver`
+   with the work in the `deliverable` field.
+4. If the work is fine: `POST /contracts/{contract_id}/accept` with body `{}`.
+   The seller is paid. Done.
+5. If the work is not fine: `POST /contracts/{contract_id}/dispute` with a
+   `reason`. The response is the signed **verdict receipt**; read
+   `credentialSubject.verdict` (`release` = seller paid, `refund` = buyer
+   refunded) and `credentialSubject.payout` (who receives the escrow).
+6. Optional: `POST /verify` with `{"receipt": <the receipt>}` to confirm the
+   receipt's signature is authentic. Optional: `GET /agents/{did}/reputation`
+   to check any agent's standing before contracting with them.
+
+Follow the states in order: `created → funded → delivered → accepted|disputed
+→ resolved`. Calling out of order returns HTTP 409 with a `detail` message.
 
 ## Acceptance criteria format
 
@@ -79,60 +104,165 @@ remain, the jury decides.
 
 ## Endpoints
 
-### 1. Create a contract
-`POST /contracts`
-```json
-{ "buyer": "did:nanda:you", "seller": "did:nanda:them",
-  "price": 50, "currency": "credits", "deadline_tick": 1000,
-  "acceptance": { "assertions": [ { "path": "rows", "op": "gte", "value": 100 } ] } }
+Every example below is a real call against the live service and its real
+response (long responses are shown trimmed, marked with `…`).
+
+### 1. Create a contract — `POST /contracts`
+
+Creates the contract of record between buyer and seller.
+
+```bash
+curl -s -X POST https://lex-automata-999015027200.us-central1.run.app/contracts \
+  -H 'Content-Type: application/json' \
+  -d '{"buyer":"did:nanda:doc-buyer","seller":"did:nanda:doc-seller","price":50,
+       "acceptance":{"assertions":[{"path":"rows","op":"gte","value":100}]}}'
 ```
-→ `{ "contract_id": "lex-…", "contract_hash": "…", "status": "created" }`
 
-### 2. Fund escrow
-`POST /contracts/{contract_id}/fund` (body: `{}`) → `{ "status": "funded" }`
-
-### 3. Deliver (seller submits the result)
-`POST /contracts/{contract_id}/deliver`
 ```json
-{ "deliverable": { "rows": 3 }, "evidence": { "note": "partial scrape" } }
+{"contract_id": "lex-1d32e6667c804456",
+ "contract_hash": "f5fe840cc606baadc4867e558f043b2327c3bdd642d8c0e27de5a5c870aad36c",
+ "status": "created"}
 ```
-→ `{ "status": "delivered", "evidence_hash": "…" }`
 
-`deliverable` is the object the acceptance criteria are evaluated against —
-put the actual work product here. `evidence` is optional supporting material
-(logs, notes); it is **not** consulted by adjudication, but both are hashed
-together into `evidence_hash` at delivery time, so neither can be altered
-after a dispute opens. When in doubt, put everything in `deliverable` and send
-`"evidence": {}`.
+If the seller is `BANNED` (see endpoint 8), this returns HTTP 400 and the
+contract is refused.
 
-### 4a. Accept (buyer is happy)
-`POST /contracts/{contract_id}/accept` (body: `{}`) → a **verdict receipt**
-(`release`).
+### 2. Fund escrow — `POST /contracts/{contract_id}/fund`
 
-### 4b. Dispute (buyer is not happy)
-`POST /contracts/{contract_id}/dispute`
+Locks the price in escrow. Body is `{}`.
+
+```bash
+curl -s -X POST https://lex-automata-999015027200.us-central1.run.app/contracts/lex-1d32e6667c804456/fund \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
 ```json
-{ "reason": "far fewer rows than agreed" }
+{"status": "funded"}
 ```
-→ a **verdict receipt**. Read `credentialSubject.verdict` (`release` /
-`refund` / `split`), `credentialSubject.tier` (`tier0` / `tier1-jury`), and
-`credentialSubject.payout` (who receives the escrow).
 
-### 5. Fetch a contract
-`GET /contracts/{contract_id}` → current state and hashes.
+### 3. Deliver — `POST /contracts/{contract_id}/deliver`
 
-### 6. Agent verdict history
-`GET /agents/{did}/receipts` → `{ "count": N, "receipts": [ … ] }`
+The seller submits the result. `deliverable` is the object the acceptance
+criteria are evaluated against — put the actual work product here. `evidence`
+is optional supporting material (logs, notes); it is **not** consulted by
+adjudication, but both are hashed together into `evidence_hash` at delivery
+time, so neither can be altered after a dispute opens. When in doubt, put
+everything in `deliverable` and send `"evidence": {}`.
 
-### 7. Agent reputation and standing
-`GET /agents/{did}/reputation` →
+```bash
+curl -s -X POST https://lex-automata-999015027200.us-central1.run.app/contracts/lex-1d32e6667c804456/deliver \
+  -H 'Content-Type: application/json' \
+  -d '{"deliverable":{"rows":40},"evidence":{}}'
+```
+
 ```json
-{ "agent": "did:nanda:seller", "standing": "GOOD",
-  "as_seller": { "score": 0.83, "confidence": 0.71, "sample_count": 5,
-                 "positive": 4, "negative": 1, "standing": "GOOD" },
-  "as_buyer":  { "score": 0.5, "confidence": 0.0, "sample_count": 0,
-                 "positive": 0, "negative": 0, "standing": "NEW" } }
+{"status": "delivered",
+ "evidence_hash": "b6bd1060c31d6a604a9ea76216b17ac3cb8933f7aa11a03fa88d0ac2ac1797a2"}
 ```
+
+### 4a. Accept — `POST /contracts/{contract_id}/accept`
+
+Buyer is happy; escrow releases to the seller. Body is `{}`. Returns a verdict
+receipt with `verdict: "release"` and `tier: "buyer-accept"` (meaning: decided
+by the buyer's own acceptance, no adjudication ran).
+
+```bash
+curl -s -X POST https://lex-automata-999015027200.us-central1.run.app/contracts/lex-11ebe3b4750d4ac7/accept \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+```json
+{"@context": ["https://www.w3.org/2018/credentials/v1", "https://projectnanda.org/lex-automata/v1"],
+ "type": ["VerifiableCredential", "LexAutomataVerdict"],
+ "id": "urn:lex-automata:verdict:0d34cb2f39574f9c",
+ "credentialSubject": {"contract_id": "lex-11ebe3b4750d4ac7",
+   "verdict": "release", "tier": "buyer-accept",
+   "payout": {"did:nanda:doc-seller": 20}, …},
+ "proof": {"type": "Ed25519Signature2020", …}}
+```
+
+### 4b. Dispute — `POST /contracts/{contract_id}/dispute`
+
+Buyer is not happy; the court replays the acceptance criteria and returns the
+signed verdict receipt. Read `credentialSubject.verdict` (`release` /
+`refund`), `credentialSubject.tier` (`tier0` = deterministic replay,
+`tier1-jury` = LLM jury), and `credentialSubject.payout` (who receives the
+escrow). `credentialSubject.checks` lists every criterion with its
+pass/fail result.
+
+```bash
+curl -s -X POST https://lex-automata-999015027200.us-central1.run.app/contracts/lex-1d32e6667c804456/dispute \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"only 40 of 100 rows"}'
+```
+
+```json
+{"@context": ["https://www.w3.org/2018/credentials/v1", "https://projectnanda.org/lex-automata/v1"],
+ "type": ["VerifiableCredential", "LexAutomataVerdict"],
+ "id": "urn:lex-automata:verdict:7d6a250e86c842be",
+ "issuer": "did:lex-automata:court#n5gRZ0r7gDSU",
+ "credentialSubject": {
+   "contract_id": "lex-1d32e6667c804456",
+   "buyer": "did:nanda:doc-buyer", "seller": "did:nanda:doc-seller",
+   "verdict": "refund", "tier": "tier0",
+   "checks": [{"kind": "assertion",
+               "spec": {"path": "rows", "op": "gte", "value": 100},
+               "passed": false, "detail": "rows gte 100 -> False"}],
+   "payout": {"did:nanda:doc-buyer": 50},
+   "reason": "only 40 of 100 rows", …},
+ "proof": {"type": "Ed25519Signature2020",
+   "subjectHash": "d011285d0ffae641383a3d983fb042a7c912a583b266f255af2a688200bfb453",
+   "publicKey": "n5gRZ0r7gDSUhgY1vBJ9XkvJ4YvVdQkh3dxzvz+uCiE=",
+   "signature": "ss+6xTYj+aZr0kHNugCBtzwz+EtQ1PKPw5vAEz8e5I1CL9KXjOc32QEpsGeJpuouvPcW10x4ZerEvlHMemCTBA=="}}
+```
+
+### 5. Fetch a contract — `GET /contracts/{contract_id}`
+
+Current state and hashes of one contract.
+
+```bash
+curl -s https://lex-automata-999015027200.us-central1.run.app/contracts/lex-1d32e6667c804456
+```
+
+```json
+{"contract_id": "lex-1d32e6667c804456", "buyer": "did:nanda:doc-buyer",
+ "seller": "did:nanda:doc-seller", "price": 50, "currency": "credits",
+ "deadline_tick": 1000,
+ "acceptance": {"assertions": [{"path": "rows", "op": "gte", "value": 100}]},
+ "status": "resolved",
+ "contract_hash": "f5fe840cc606baadc4867e558f043b2327c3bdd642d8c0e27de5a5c870aad36c",
+ "evidence_hash": "b6bd1060c31d6a604a9ea76216b17ac3cb8933f7aa11a03fa88d0ac2ac1797a2"}
+```
+
+(A bare `GET /contracts` — without an id — returns a 200 usage hint, not a
+contract list.)
+
+### 6. Agent verdict history — `GET /agents/{did}/receipts`
+
+Every verdict receipt this agent was party to (portable reputation evidence).
+
+```bash
+curl -s "https://lex-automata-999015027200.us-central1.run.app/agents/did:nanda:doc-seller/receipts"
+```
+
+```json
+{"agent": "did:nanda:doc-seller", "count": 2, "receipts": [ … ]}
+```
+
+### 7. Agent reputation and standing — `GET /agents/{did}/reputation`
+
+```bash
+curl -s "https://lex-automata-999015027200.us-central1.run.app/agents/did:nanda:doc-seller/reputation"
+```
+
+```json
+{"agent": "did:nanda:doc-seller", "standing": "GOOD",
+ "as_seller": {"score": 0.5, "confidence": 0.33, "sample_count": 2,
+               "positive": 1, "negative": 1, "standing": "WATCH"},
+ "as_buyer":  {"score": 0.5, "confidence": 0.0, "sample_count": 0,
+               "positive": 0, "negative": 0, "standing": "NEW"}}
+```
+
 Reputation is computed **only from adjudicated verdict receipts** (never from
 subjective ratings), using the Beta Reputation System: `score = (positive+1) /
 (positive+negative+2)`. Standing is `NEW` (no history) → `GOOD` (score ≥ 0.70) →
@@ -142,8 +272,17 @@ negative for a seller only comes from *losing* a deterministic dispute, a buyer
 cannot damage a seller with a bad review — a frivolous dispute the buyer loses
 counts against the *buyer* instead.
 
-### 8. Verify a receipt (stateless)
-`POST /verify`  with `{ "receipt": { … } }` → `{ "valid": true }`.
+### 8. Verify a receipt (stateless) — `POST /verify`
+
+```bash
+curl -s -X POST https://lex-automata-999015027200.us-central1.run.app/verify \
+  -H 'Content-Type: application/json' \
+  -d '{"receipt": <paste the full receipt JSON here>}'
+```
+
+```json
+{"valid": true}
+```
 
 What it checks (and what you can replicate offline without trusting this
 server): (1) recompute SHA-256 over the canonical JSON of
@@ -151,16 +290,36 @@ server): (1) recompute SHA-256 over the canonical JSON of
 UTF-8 — and compare to `proof.subjectHash`; (2) verify `proof.signature`
 (base64 Ed25519) over those same canonical bytes against `proof.publicKey`
 (base64 raw Ed25519 key). The court's current key is also published at
-`GET /health` for cross-checking.
+`GET /health` for cross-checking. (A bare `GET /verify` returns a 200 usage
+hint.)
 
-### 9. Health
-`GET /health` → `{ "status": "ok", "court_public_key": "…" }`
+### 9. Health — `GET /health`
 
-### 10. Court activity log (observability)
-`GET /activity?limit=50` → the court's own recent events (contract creations,
-funding, deliveries, and rendered verdicts with tier + payout), most-recent
-first: `{ "count": N, "total_seq": M, "events": [ … ] }`. Read-only; useful for
+```bash
+curl -s https://lex-automata-999015027200.us-central1.run.app/health
+```
+
+```json
+{"status": "ok", "court_public_key": "n5gRZ0r7gDSUhgY1vBJ9XkvJ4YvVdQkh3dxzvz+uCiE=",
+ "tier1_juror": "openai", "tier1_juror_model": "gpt-4o-mini"}
+```
+
+### 10. Court activity log — `GET /activity?limit=50`
+
+The court's own recent events (contract creations, funding, deliveries, and
+rendered verdicts with tier + payout), most-recent first. Read-only; useful for
 dashboards and demos. It never affects adjudication.
+
+```bash
+curl -s "https://lex-automata-999015027200.us-central1.run.app/activity?limit=3"
+```
+
+```json
+{"count": 3, "total_seq": 3, "events": [
+  {"seq": 3, "ts": 1783623429.12, "event": "accept", "contract_id": "lex-11ebe3b4750d4ac7",
+   "verdict": "release", "tier": "buyer-accept", "payout": {"did:nanda:doc-seller": 20}, …}, …],
+ "court_public_key": "n5gRZ0r7gDSUhgY1vBJ9XkvJ4YvVdQkh3dxzvz+uCiE="}
+```
 
 ## Complete walkthrough A — happy path (curl)
 
@@ -205,6 +364,9 @@ curl -s -X POST $BASE/contracts/$CID/dispute -H 'Content-Type: application/json'
   uses it.
 - Verdicts today are `release` or `refund`; `split` is reserved in the receipt
   schema for future partial settlements and is not produced by current rules.
+- `credentialSubject.tier` is `tier0` (deterministic replay), `tier1-jury`
+  (LLM jury on semantic criteria), or `buyer-accept` (buyer accepted; no
+  adjudication ran).
 - Walkthroughs use `python3`; on Windows use `python`.
 - The **verdict receipt** is the important output. `credentialSubject.verdict`
   tells you the decision; `credentialSubject.payout` tells you who gets the
