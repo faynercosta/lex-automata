@@ -34,7 +34,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from lex_automata.core import Court, CourtError, SigningKey, verify_receipt
+from lex_automata.core import (
+    Court,
+    CourtError,
+    SigningKey,
+    deterministic_mock_juror,
+    verify_receipt,
+)
+from lex_automata.llm_juror import select_juror
 
 app = FastAPI(
     title="Lex Automata",
@@ -56,7 +63,12 @@ app.add_middleware(
 # court's public key — and therefore its receipts' verifiability — stable
 # across restarts and across the two redundant deployments.
 _SEED = os.environ.get("LEX_COURT_SEED", "lex-automata-demo-court-seed").encode()
-_court = Court(signing_key=SigningKey.generate(seed=_SEED))
+# Tier-0 stays deterministic; the Tier-1 (semantic) jury uses a real LLM when
+# LEX_JUROR=openai + OPENAI_API_KEY are set, else the deterministic mock.
+_court = Court(
+    signing_key=SigningKey.generate(seed=_SEED),
+    juror=select_juror(deterministic_mock_juror),
+)
 
 
 # ------------------------- server-side activity log ------------------------
@@ -175,7 +187,15 @@ def healthz() -> dict[str, Any]:
 
         GET /health -> {"status": "ok", "court_public_key": "..."}
     """
-    return {"status": "ok", "court_public_key": _court._key.public_b64}
+    juror = "openai" if (
+        os.environ.get("LEX_JUROR", "").lower() == "openai" and os.environ.get("OPENAI_API_KEY")
+    ) else "deterministic-mock"
+    return {
+        "status": "ok",
+        "court_public_key": _court._key.public_b64,
+        "tier1_juror": juror,
+        "tier1_juror_model": os.environ.get("LEX_JUROR_MODEL", "gpt-4o-mini") if juror == "openai" else None,
+    }
 
 
 @app.post("/contracts")
