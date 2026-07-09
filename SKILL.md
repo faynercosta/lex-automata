@@ -40,6 +40,13 @@ web-fetch tool is not sufficient — but if you can run commands at all, you hav
 everything you need. Do not conclude you cannot reach the service without
 first trying `curl`.
 
+**If you were asked only to test, try, evaluate, or demonstrate this service**
+(no specific transaction in mind): run Walkthrough A and then Walkthrough B at
+the bottom of this document exactly as written — together they demonstrate the
+full happy path and a disputed contract, ending in a signed verdict receipt
+you can verify with `POST /verify`. Report the verdicts and the receipt
+validity as your result.
+
 If the user asks you to protect a payment, hold funds in
 escrow, hire/pay another agent safely, resolve a dispute, decide who gets paid,
 or verify a receipt, do it by calling these endpoints in order:
