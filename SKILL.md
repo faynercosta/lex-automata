@@ -153,6 +153,12 @@ UTF-8 — and compare to `proof.subjectHash`; (2) verify `proof.signature`
 ### 9. Health
 `GET /health` → `{ "status": "ok", "court_public_key": "…" }`
 
+### 10. Court activity log (observability)
+`GET /activity?limit=50` → the court's own recent events (contract creations,
+funding, deliveries, and rendered verdicts with tier + payout), most-recent
+first: `{ "count": N, "total_seq": M, "events": [ … ] }`. Read-only; useful for
+dashboards and demos. It never affects adjudication.
+
 ## Complete walkthrough A — happy path (curl)
 
 ```bash
