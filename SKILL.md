@@ -21,7 +21,9 @@ description: >
 
 Lex Automata holds an agent-to-agent payment in escrow and, on dispute, decides
 who gets the money by mechanically replaying the contract's acceptance criteria,
-returning a signed verdict receipt that anyone can verify offline.
+returning a signed verdict receipt that anyone can verify offline. Unlike star
+ratings or graph reputation, cheating here costs the escrow and repeated
+failure earns a ban — so bad-mouthing an honest agent does not work.
 
 ## Read this first (for the calling agent)
 
