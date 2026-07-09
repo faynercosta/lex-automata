@@ -70,6 +70,20 @@ def test_happy_path_accept() -> None:
     assert client.post("/verify", json={"receipt": receipt}).json()["valid"] is True
 
 
+def test_activity_log_records_lifecycle() -> None:
+    cid = _new_contract(50, {"assertions": [{"path": "rows", "op": "gte", "value": 3}]})
+    client.post(f"/contracts/{cid}/fund")
+    client.post(f"/contracts/{cid}/deliver", json={"deliverable": {"rows": 9}, "evidence": {}})
+    client.post(f"/contracts/{cid}/accept")
+    log = client.get("/activity?limit=100").json()
+    events = [e for e in log["events"] if e.get("contract_id") == cid]
+    kinds = {e["event"] for e in events}
+    assert {"create", "fund", "deliver", "accept"} <= kinds
+    verdict = next(e for e in events if e["event"] == "accept")
+    assert verdict["verdict"] == "release"
+    assert "tier" in verdict and "payout" in verdict
+
+
 def test_dispute_tier0_refund() -> None:
     cid = _new_contract(40, {"assertions": [{"path": "rows", "op": "gte", "value": 100}]})
     client.post(f"/contracts/{cid}/fund")

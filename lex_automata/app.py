@@ -12,6 +12,7 @@ from the SKILL.md alone:
     GET  /verdicts/{contract_id}        (also GET /contracts/{id})
     GET  /agents/{did}/receipts         portable verdict history
     POST /verify                        verify a verdict receipt (stateless)
+    GET  /activity                      the court's own recent activity log
     GET  /healthz                       liveness
 
 Run locally::
@@ -23,6 +24,8 @@ Run locally::
 from __future__ import annotations
 
 import os
+import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +57,27 @@ app.add_middleware(
 # across restarts and across the two redundant deployments.
 _SEED = os.environ.get("LEX_COURT_SEED", "lex-automata-demo-court-seed").encode()
 _court = Court(signing_key=SigningKey.generate(seed=_SEED))
+
+
+# ------------------------- server-side activity log ------------------------
+# A bounded, in-memory record of what the court itself did, exposed at
+# GET /activity so an operator (or the arena's "Court log" tab) can watch the
+# court's own view of events — distinct from any single client's log. Purely
+# observational: it never affects adjudication, receipts, or reputation.
+_ACTIVITY: deque[dict[str, Any]] = deque(maxlen=250)
+_ACTIVITY_SEQ = 0
+
+
+def _record(event: str, **fields: Any) -> None:
+    """Append one server-side activity record (most-recent-last).
+
+    Example::
+
+        _record("create", contract_id="lex-abc", price=50)
+    """
+    global _ACTIVITY_SEQ
+    _ACTIVITY_SEQ += 1
+    _ACTIVITY.append({"seq": _ACTIVITY_SEQ, "ts": round(time.time(), 3), "event": event, **fields})
 
 
 # --------------------------- request models --------------------------------
@@ -174,7 +198,16 @@ def create_contract(body: CreateContract) -> dict[str, Any]:
             dispute_bond=body.dispute_bond,
         )
     except CourtError as exc:
+        _record("refused", buyer=body.buyer, seller=body.seller, detail=str(exc))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _record(
+        "create",
+        contract_id=c.contract_id,
+        buyer=body.buyer,
+        seller=body.seller,
+        price=body.price,
+        currency=body.currency,
+    )
     return {
         "contract_id": c.contract_id,
         "contract_hash": c.contract_hash,
@@ -190,7 +223,9 @@ def fund(contract_id: str) -> dict[str, Any]:
 
         POST /contracts/lex-abc/fund
     """
-    return _guard(lambda: _court.fund(contract_id), lambda c: {"status": c.status.value})
+    res = _guard(lambda: _court.fund(contract_id), lambda c: {"status": c.status.value})
+    _record("fund", contract_id=contract_id, status=res["status"])
+    return res
 
 
 @app.post("/contracts/{contract_id}/deliver")
@@ -201,10 +236,12 @@ def deliver(contract_id: str, body: Deliver) -> dict[str, Any]:
 
         POST /contracts/lex-abc/deliver {"deliverable":{"rows":5},"evidence":{}}
     """
-    return _guard(
+    res = _guard(
         lambda: _court.deliver(contract_id, body.deliverable, body.evidence),
         lambda c: {"status": c.status.value, "evidence_hash": c.evidence_hash},
     )
+    _record("deliver", contract_id=contract_id, evidence_hash=res["evidence_hash"])
+    return res
 
 
 @app.post("/contracts/{contract_id}/accept")
@@ -216,9 +253,11 @@ def accept(contract_id: str) -> dict[str, Any]:
         POST /contracts/lex-abc/accept
     """
     try:
-        return _court.accept(contract_id)
+        receipt = _court.accept(contract_id)
     except CourtError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _record_verdict("accept", contract_id, receipt)
+    return receipt
 
 
 @app.post("/contracts/{contract_id}/dispute")
@@ -230,9 +269,11 @@ def dispute(contract_id: str, body: Dispute) -> dict[str, Any]:
         POST /contracts/lex-abc/dispute {"reason":"rows look short"}
     """
     try:
-        return _court.dispute(contract_id, reason=body.reason)
+        receipt = _court.dispute(contract_id, reason=body.reason)
     except CourtError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _record_verdict("dispute", contract_id, receipt)
+    return receipt
 
 
 @app.get("/contracts/{contract_id}")
@@ -290,7 +331,49 @@ def verify(body: VerifyBody) -> dict[str, Any]:
     return {"valid": verify_receipt(body.receipt)}
 
 
+@app.get("/activity")
+def activity(limit: int = 50) -> dict[str, Any]:
+    """Return the court's own recent activity log, most-recent first.
+
+    This is the server's view of what happened — contract creations, funding,
+    deliveries, and rendered verdicts (with tier and payout) — as opposed to any
+    single client's log. Observational only; it never affects adjudication.
+
+    Example::
+
+        GET /activity?limit=20
+        -> {"count": 137, "events": [{"seq": 137, "event": "dispute",
+             "verdict": "refund", "tier": "tier0", ...}, ...]}
+    """
+    limit = max(1, min(limit, 250))
+    events = list(_ACTIVITY)[-limit:][::-1]
+    return {
+        "count": len(_ACTIVITY),
+        "total_seq": _ACTIVITY_SEQ,
+        "events": events,
+        "court_public_key": _court._key.public_b64,
+    }
+
+
 # ------------------------------ helpers ------------------------------------
+
+
+def _record_verdict(event: str, contract_id: str, receipt: dict[str, Any]) -> None:
+    """Log a rendered verdict (verdict, tier, payout) to the activity feed.
+
+    Example::
+
+        _record_verdict("dispute", "lex-abc", receipt)
+    """
+    cs = receipt.get("credentialSubject", {})
+    _record(
+        event,
+        contract_id=contract_id,
+        verdict=cs.get("verdict"),
+        tier=cs.get("tier"),
+        payout=cs.get("payout"),
+        receipt_id=receipt.get("id"),
+    )
 
 
 def _guard(action: Any, shape: Any) -> dict[str, Any]:

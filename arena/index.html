@@ -54,10 +54,27 @@
   aside{background:var(--panel); border-radius:16px; display:flex; flex-direction:column;
     overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.35); border:1px solid #e4d6b8}
   .docket-h{background:linear-gradient(180deg,#2b1a0d,#3a2512); color:var(--parchment);
-    padding:10px 14px; font-weight:bold; letter-spacing:.4px; display:flex; align-items:center; gap:8px;
+    padding:0 6px; font-weight:bold; letter-spacing:.4px; display:flex; align-items:center; gap:2px;
     border-bottom:2px solid var(--gold)}
-  #docket{flex:1; overflow-y:auto; padding:8px 10px; font-size:12.5px; line-height:1.45;
+  .tabBtn{background:transparent; border:none; color:#cbb68a; padding:10px 12px; cursor:pointer;
+    font-weight:bold; font-size:13px; border-bottom:3px solid transparent; font-family:inherit}
+  .tabBtn:hover{color:#f0d98a}
+  .tabBtn.active{color:#fff; border-bottom-color:var(--gold)}
+  #docketSub{margin-left:auto; font-weight:normal; padding-right:8px}
+  .panel{flex:1; overflow-y:auto; display:none}
+  .panel.active{display:block}
+  #docket{padding:8px 10px; font-size:12.5px; line-height:1.45;
     background:repeating-linear-gradient(180deg,#fffaf0,#fffaf0 27px,#f4ecd8 27px,#f4ecd8 28px)}
+  /* court log: a server terminal */
+  #courtlog{background:#0e1117; color:#c7d0dd; font-family:ui-monospace,Consolas,monospace;
+    font-size:11.5px; line-height:1.5; padding:8px 10px}
+  #courtlog .cl-h{color:#6b7688; margin-bottom:6px; border-bottom:1px solid #232a36; padding-bottom:6px}
+  .clr{white-space:pre-wrap; padding:1px 0}
+  .clr .seq{color:#556074}
+  .clr .ev{font-weight:bold}
+  .clr .ev.create{color:#6fb3ff} .clr .ev.fund{color:#e6c86e} .clr .ev.deliver{color:#9a8cff}
+  .clr .ev.dispute{color:#ff8f6b} .clr .ev.accept{color:#5fd08a} .clr .ev.refused{color:#ff6b6b}
+  .clr .cid{color:#7b8697} .clr .rel{color:#5fd08a} .clr .ref{color:#ff8f6b} .clr .dim{color:#5a6474}
   .row{display:flex; gap:8px; padding:3px 4px; border-radius:6px; animation:slidein .35s ease}
   @keyframes slidein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .row .ic{flex:none; width:20px; text-align:center}
@@ -102,8 +119,13 @@
   </div>
 
   <aside>
-    <div class="docket-h">📜 Court Docket <span id="docketSub" class="tag" style="margin-left:auto;font-weight:normal"></span></div>
-    <div id="docket"></div>
+    <div class="docket-h">
+      <button class="tabBtn active" data-tab="docket">📜 Docket</button>
+      <button class="tabBtn" data-tab="courtlog">🖥️ Court log</button>
+      <span id="docketSub" class="tag"></span>
+    </div>
+    <div id="docket" class="panel active"></div>
+    <div id="courtlog" class="panel"><div class="cl-h" id="clHead">court backend — GET /activity</div><div id="clBody"></div></div>
     <div class="controls">
       <button class="scn run" data-s="all">▶ Run all</button>
       <button class="scn" data-s="honest">🤝 Honest deal</button>
@@ -117,7 +139,7 @@
 </div>
 
 <script>
-const BUILD = "2026-07-09c";
+const BUILD = "2026-07-09d";
 const BASE = "https://lex-automata-999015027200.us-central1.run.app";
 const SVGNS = "http://www.w3.org/2000/svg";
 const stage = document.getElementById("stage");
@@ -482,6 +504,43 @@ async function run(name){
   setBusy(false);
 }
 document.querySelectorAll("button.scn").forEach(b=> b.addEventListener("click",()=>run(b.dataset.s)));
+
+// ---- auxiliary tab: the court's own backend log (GET /activity) -----------
+const shortDid = d => d ? d.split(":").pop() : "?";
+const hhmmss = ts => { try{ return new Date(ts*1000).toLocaleTimeString(); }catch{ return ""; } };
+
+function courtLogLine(e){
+  const seq = String(e.seq).padStart(4,"0");
+  const cid = e.contract_id ? `<span class="cid">${e.contract_id.slice(0,12)}</span>` : "";
+  let detail = "";
+  if(e.event==="create")  detail = `${shortDid(e.buyer)} → ${shortDid(e.seller)}  <span class="dim">${e.price} ${e.currency||"credits"}</span>`;
+  else if(e.event==="fund")    detail = `<span class="dim">escrow locked</span>`;
+  else if(e.event==="deliver") detail = `<span class="dim">evidence ${(e.evidence_hash||"").slice(0,10)}…</span>`;
+  else if(e.event==="accept"||e.event==="dispute"){
+    const rel = e.verdict==="release";
+    detail = `→ <span class="${rel?"rel":"ref"}">${(e.verdict||"?").toUpperCase()}</span> <span class="dim">(${e.tier})</span>  payout ${JSON.stringify(e.payout||{}).replace(/"/g,"")}`;
+  }
+  else if(e.event==="refused") detail = `<span class="ref">REFUSED</span> ${shortDid(e.seller)} <span class="dim">— ${(e.detail||"").slice(0,42)}</span>`;
+  return `<div class="clr"><span class="seq">#${seq}</span> <span class="dim">${hhmmss(e.ts)}</span> <span class="ev ${e.event}">${e.event.toUpperCase().padEnd(8)}</span> ${cid} ${detail}</div>`;
+}
+
+async function refreshCourtLog(){
+  const res = await api("GET","/activity?limit=60");
+  if(!res.data || !res.data.events){ return; }
+  document.getElementById("clHead").innerHTML =
+    `court backend · <span style="color:#8ef0ad">${res.data.total_seq} events</span> · key ${(res.data.court_public_key||"").slice(0,10)}… · <span class="dim">GET /activity</span>`;
+  document.getElementById("clBody").innerHTML =
+    res.data.events.length ? res.data.events.map(courtLogLine).join("") : `<div class="dim">no court activity yet — run a scenario</div>`;
+}
+
+let _clTimer=null;
+function switchTab(tab){
+  document.querySelectorAll(".tabBtn").forEach(b=> b.classList.toggle("active", b.dataset.tab===tab));
+  document.querySelectorAll(".panel").forEach(p=> p.classList.toggle("active", p.id===tab));
+  if(tab==="courtlog"){ refreshCourtLog(); if(!_clTimer) _clTimer=setInterval(refreshCourtLog, 1500); }
+  else if(_clTimer){ clearInterval(_clTimer); _clTimer=null; }
+}
+document.querySelectorAll(".tabBtn").forEach(b=> b.addEventListener("click",()=>switchTab(b.dataset.tab)));
 
 // ---- boot: connect to live court -----------------------------------------
 buildScenery();
